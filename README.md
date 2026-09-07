@@ -218,6 +218,25 @@ El archivo `.env` está excluido del repositorio para evitar publicar accidental
 
 Si un token se publica accidentalmente, debe regenerarse desde el Discord Developer Portal.
 
+## Estado del proyecto
+
+PenguSpeak sigue en desarrollo activo.
+
+### Funciones actuales
+
+- TTS continuo para mensajes
+- Mensajes TTS individuales
+- 22 voces en español
+- Selección de voz por usuario
+- Demos de voz
+- OCR para texto en imágenes
+- Apodos personalizados
+- Preferencias persistentes
+- Cola de reproducción por servidor
+- Desconexión automática por inactividad
+- Compatibilidad con Linux
+- Compatibilidad con Android mediante Termux + Debian
+
 ## Licencia
 
 Este proyecto está disponible bajo la licencia MIT. Consulta el archivo `LICENSE` para más información.
