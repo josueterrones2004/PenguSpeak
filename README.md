@@ -91,71 +91,91 @@ Instala las dependencias de Python con:
 
 ```bash
 pip install -r requirements.txt
-Dependencias del sistema
+```
+
+### Dependencias del sistema
 
 PenguSpeak también necesita:
 
-FFmpeg
-Tesseract OCR
-Datos de idioma español para Tesseract
+- FFmpeg
+- Tesseract OCR
+- Datos de idioma español para Tesseract
 
-En Arch Linux / CachyOS:
+#### Arch Linux / CachyOS
 
+```bash
 sudo pacman -S ffmpeg tesseract tesseract-data-spa
+```
 
-En Debian / Ubuntu:
+#### Debian / Ubuntu
 
+```bash
 sudo apt install ffmpeg tesseract-ocr tesseract-ocr-spa
-Configuración del bot de Discord
+```
+
+## Configuración del bot de Discord
 
 Crea una aplicación en el Discord Developer Portal y añade un bot.
 
 Activa:
 
-Message Content Intent
+- **Message Content Intent**
 
-El bot también necesita permisos para:
+El bot necesita permisos para:
 
-Ver canales
-Enviar mensajes
-Conectarse a canales de voz
-Hablar
-Usar comandos de aplicación
-Configuración
+- Ver canales
+- Enviar mensajes
+- Conectarse a canales de voz
+- Hablar
+- Usar comandos de aplicación
+
+## Configuración
 
 Copia el archivo de ejemplo:
 
+```bash
 cp .env.example .env
+```
 
-Después edita .env y añade el token de tu bot:
+Después edita `.env` y añade el token de tu bot:
 
+```env
 DISCORD_TOKEN=tu_token_de_discord_aqui
+```
 
-Nunca subas tu token real a GitHub.
+> [!WARNING]
+> Nunca publiques tu token real de Discord ni subas el archivo `.env` al repositorio.
 
-Ejecutar PenguSpeak
+## Ejecutar PenguSpeak
 
 Ejecuta:
 
+```bash
 python bot.py
+```
 
-Si usas un entorno virtual:
+Si utilizas el entorno virtual del proyecto:
 
+```bash
 .venv/bin/python bot.py
-Android
+```
 
-PenguSpeak también puede ejecutarse en Android mediante:
+## Android
 
-Termux
-proot-distro
-Debian
-Python
-FFmpeg
-Tesseract OCR
+PenguSpeak también puede ejecutarse en Android utilizando:
+
+- Termux
+- `proot-distro`
+- Debian
+- Python
+- FFmpeg
+- Tesseract OCR
 
 La versión de Android utiliza el mismo sistema Edge TTS que la versión de escritorio.
 
-Estructura del proyecto
+## Estructura del proyecto
+
+```text
 PenguSpeak/
 ├── bot.py
 ├── config.py
@@ -178,24 +198,26 @@ PenguSpeak/
 └── demos/
     ├── male/
     └── female/
-Datos locales y privacidad
+```
 
-PenguSpeak almacena algunas preferencias de usuario de forma local, como:
+## Datos locales y privacidad
 
-ID de usuario de Discord
-Voz seleccionada
-Apodo personalizado
+PenguSpeak almacena localmente algunas preferencias de usuario:
+
+- ID de usuario de Discord
+- Voz seleccionada
+- Apodo personalizado
 
 Estos datos se guardan en una base de datos SQLite local.
 
-Los archivos de base de datos están excluidos del repositorio mediante .gitignore.
+Los archivos de base de datos están excluidos del repositorio mediante `.gitignore`.
 
-Seguridad
+## Seguridad
 
-No compartas ni publiques tu archivo .env.
+El archivo `.env` está excluido del repositorio para evitar publicar accidentalmente el token del bot.
 
-Si un token de Discord se publica accidentalmente, debes regenerarlo desde el Discord Developer Portal.
+Si un token se publica accidentalmente, debe regenerarse desde el Discord Developer Portal.
 
-Licencia
+## Licencia
 
 Todavía no se ha seleccionado una licencia para este proyecto.
