@@ -220,4 +220,4 @@ Si un token se publica accidentalmente, debe regenerarse desde el Discord Develo
 
 ## Licencia
 
-Todavía no se ha seleccionado una licencia para este proyecto.
+Este proyecto está disponible bajo la licencia MIT. Consulta el archivo `LICENSE` para más información.
