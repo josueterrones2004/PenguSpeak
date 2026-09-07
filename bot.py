@@ -113,7 +113,9 @@ async def get_voice_client(
 
     if voice_client is None:
         voice_client = (
-            await channel.connect()
+            await channel.connect(
+		self_deaf=True
+        	)
         )
 
     elif (

@@ -1,39 +1,34 @@
 import asyncio
 import time
 
+import discord
 
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
 
 NAME_COOLDOWN = 30
 IDLE_DISCONNECT_SECONDS = 300
 
 
 # ============================================================
-# USUARIOS ACTIVOS
+# USUARIOS CON TTS ACTIVO
 # ============================================================
 
-# guild_id -> set(user_id)
 active_users = {}
 
 
 def get_guild_active_users(guild_id):
-    if guild_id not in active_users:
-        active_users[guild_id] = set()
-
-    return active_users[guild_id]
+    return active_users.setdefault(
+        guild_id,
+        set(),
+    )
 
 
 def activate_user(
     guild_id,
     user_id,
 ):
-    users = get_guild_active_users(
+    get_guild_active_users(
         guild_id
-    )
-
-    users.add(
+    ).add(
         user_id
     )
 
@@ -42,11 +37,9 @@ def deactivate_user(
     guild_id,
     user_id,
 ):
-    users = get_guild_active_users(
+    get_guild_active_users(
         guild_id
-    )
-
-    users.discard(
+    ).discard(
         user_id
     )
 
@@ -55,11 +48,12 @@ def is_user_active(
     guild_id,
     user_id,
 ):
-    users = get_guild_active_users(
-        guild_id
+    return (
+        user_id
+        in get_guild_active_users(
+            guild_id
+        )
     )
-
-    return user_id in users
 
 
 def get_guild_active_count(
@@ -80,17 +74,14 @@ def get_total_active_count():
 
 
 # ============================================================
-# COLA Y AUDIO
+# COLAS
 # ============================================================
 
 guild_queues = {}
-
 guild_queue_events = {}
-
 guild_workers = {}
 
 guild_current_items = {}
-
 guild_cancelled_items = {}
 
 guild_audio_locks = {}
@@ -99,36 +90,34 @@ guild_audio_locks = {}
 def ensure_guild_state(
     guild_id,
 ):
-    from collections import deque
+    guild_queues.setdefault(
+        guild_id,
+        [],
+    )
 
-    if guild_id not in guild_queues:
-        guild_queues[
-            guild_id
-        ] = deque()
+    guild_queue_events.setdefault(
+        guild_id,
+        asyncio.Event(),
+    )
 
-    if guild_id not in guild_queue_events:
-        guild_queue_events[
-            guild_id
-        ] = asyncio.Event()
+    guild_current_items.setdefault(
+        guild_id,
+        None,
+    )
 
-    if guild_id not in guild_cancelled_items:
-        guild_cancelled_items[
-            guild_id
-        ] = set()
+    guild_cancelled_items.setdefault(
+        guild_id,
+        set(),
+    )
 
-    if guild_id not in guild_audio_locks:
-        guild_audio_locks[
-            guild_id
-        ] = asyncio.Lock()
-
-    if guild_id not in active_users:
-        active_users[
-            guild_id
-        ] = set()
+    guild_audio_locks.setdefault(
+        guild_id,
+        asyncio.Lock(),
+    )
 
 
 # ============================================================
-# "X DICE"
+# ANUNCIO DE NOMBRES
 # ============================================================
 
 last_name_announcement = {}
@@ -145,15 +134,16 @@ def should_announce_name(
 
     now = time.monotonic()
 
-    last_time = (
+    previous = (
         last_name_announcement.get(
             key
         )
     )
 
     if (
-        last_time is None
-        or now - last_time >= NAME_COOLDOWN
+        previous is None
+        or now - previous
+        >= NAME_COOLDOWN
     ):
         last_name_announcement[
             key
@@ -165,7 +155,259 @@ def should_announce_name(
 
 
 # ============================================================
-# ESTADO DE DISCORD
+# ACTIVIDAD / INACTIVIDAD
+# ============================================================
+
+guild_last_activity = {}
+guild_idle_tasks = {}
+
+
+def mark_guild_activity(
+    guild_id,
+):
+    """
+    Reinicia el contador de inactividad.
+
+    Se llama cuando entra actividad nueva,
+    por ejemplo cuando se añade un mensaje
+    a la cola.
+    """
+
+    guild_last_activity[
+        guild_id
+    ] = time.monotonic()
+
+
+def cancel_idle_disconnect(
+    guild_id,
+):
+    """
+    Históricamente esta función cancelaba
+    el temporizador.
+
+    Ahora simplemente reinicia la actividad.
+    El monitor permanece activo para poder
+    detectar 5 minutos reales de inactividad.
+    """
+
+    mark_guild_activity(
+        guild_id
+    )
+
+
+async def idle_disconnect_worker(
+    bot,
+    guild_id,
+):
+    ensure_guild_state(
+        guild_id
+    )
+
+    mark_guild_activity(
+        guild_id
+    )
+
+    try:
+        while True:
+            guild = bot.get_guild(
+                guild_id
+            )
+
+            if guild is None:
+                return
+
+            voice_client = (
+                guild.voice_client
+            )
+
+            if (
+                voice_client is None
+                or not voice_client.is_connected()
+            ):
+                return
+
+            # ------------------------------------------------
+            # SI ESTÁ HABLANDO O HAY TRABAJO PENDIENTE,
+            # TODAVÍA NO CONSIDERAMOS AL BOT INACTIVO.
+            # ------------------------------------------------
+
+            queue_busy = bool(
+                guild_queues.get(
+                    guild_id
+                )
+            )
+
+            current_busy = (
+                guild_current_items.get(
+                    guild_id
+                )
+                is not None
+            )
+
+            playing = (
+                voice_client.is_playing()
+            )
+
+            if (
+                queue_busy
+                or current_busy
+                or playing
+            ):
+                mark_guild_activity(
+                    guild_id
+                )
+
+                await asyncio.sleep(
+                    5
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # CALCULAR TIEMPO SIN ACTIVIDAD
+            # ------------------------------------------------
+
+            last_activity = (
+                guild_last_activity.get(
+                    guild_id,
+                    time.monotonic(),
+                )
+            )
+
+            idle_for = (
+                time.monotonic()
+                - last_activity
+            )
+
+            remaining = (
+                IDLE_DISCONNECT_SECONDS
+                - idle_for
+            )
+
+            if remaining > 0:
+                await asyncio.sleep(
+                    min(
+                        5,
+                        remaining,
+                    )
+                )
+
+                continue
+
+            # ------------------------------------------------
+            # 5 MINUTOS SIN ACTIVIDAD
+            # ------------------------------------------------
+
+            print(
+                f"[IDLE] Servidor {guild_id}: "
+                "5 minutos sin actividad. "
+                "Desconectando..."
+            )
+
+            guild_queues[
+                guild_id
+            ].clear()
+
+            guild_queue_events[
+                guild_id
+            ].clear()
+
+            current = (
+                guild_current_items.get(
+                    guild_id
+                )
+            )
+
+            if current is not None:
+                guild_cancelled_items[
+                    guild_id
+                ].add(
+                    current["id"]
+                )
+
+            if voice_client.is_playing():
+                voice_client.stop()
+
+            get_guild_active_users(
+                guild_id
+            ).clear()
+
+            try:
+                await voice_client.disconnect(
+                    force=True
+                )
+
+            except Exception as exc:
+                print(
+                    "[IDLE] Error al desconectar: "
+                    f"{exc}"
+                )
+
+            await update_presence(
+                bot
+            )
+
+            return
+
+    except asyncio.CancelledError:
+        return
+
+    finally:
+        current_task = (
+            guild_idle_tasks.get(
+                guild_id
+            )
+        )
+
+        if (
+            current_task
+            is asyncio.current_task()
+        ):
+            guild_idle_tasks.pop(
+                guild_id,
+                None,
+            )
+
+
+def schedule_idle_disconnect(
+    bot,
+    guild_id,
+):
+    """
+    Garantiza que haya un único monitor
+    de inactividad para el servidor.
+    """
+
+    ensure_guild_state(
+        guild_id
+    )
+
+    task = guild_idle_tasks.get(
+        guild_id
+    )
+
+    if (
+        task
+        and not task.done()
+    ):
+        return
+
+    mark_guild_activity(
+        guild_id
+    )
+
+    guild_idle_tasks[
+        guild_id
+    ] = asyncio.create_task(
+        idle_disconnect_worker(
+            bot,
+            guild_id,
+        )
+    )
+
+
+# ============================================================
+# PRESENCIA
 # ============================================================
 
 async def update_presence(
@@ -186,155 +428,8 @@ async def update_presence(
             f"{count} usuarios usando TTS"
         )
 
-    try:
-        await bot.change_presence(
-            activity=discord.CustomActivity(
-                name=text
-            )
-        )
-
-    except Exception as exc:
-        print(
-            "No se pudo actualizar "
-            f"el estado: {exc}"
-        )
-
-
-# discord se importa aquí para mantener
-# organizadas las dependencias del archivo.
-import discord
-
-
-# ============================================================
-# DESCONEXIÓN AUTOMÁTICA
-# ============================================================
-
-# guild_id -> asyncio.Task
-guild_idle_tasks = {}
-
-
-def cancel_idle_disconnect(
-    guild_id,
-):
-    task = guild_idle_tasks.get(
-        guild_id
-    )
-
-    if (
-        task
-        and not task.done()
-    ):
-        task.cancel()
-
-    guild_idle_tasks.pop(
-        guild_id,
-        None,
-    )
-
-
-async def idle_disconnect_worker(
-    bot,
-    guild_id,
-):
-    try:
-        await asyncio.sleep(
-            IDLE_DISCONNECT_SECONDS
-        )
-
-        # Alguien volvió a activar TTS.
-        if (
-            get_guild_active_count(
-                guild_id
-            )
-            > 0
-        ):
-            return
-
-        guild = bot.get_guild(
-            guild_id
-        )
-
-        if guild is None:
-            return
-
-        voice_client = (
-            guild.voice_client
-        )
-
-        # Limpiar mensajes que pudieran
-        # haberse quedado pendientes.
-        queue = guild_queues.get(
-            guild_id
-        )
-
-        if queue is not None:
-            queue.clear()
-
-        event = guild_queue_events.get(
-            guild_id
-        )
-
-        if event is not None:
-            event.clear()
-
-        # Cortar cualquier audio que siga
-        # reproduciéndose.
-        if (
-            voice_client
-            and voice_client.is_playing()
-        ):
-            voice_client.stop()
-
-        if (
-            voice_client
-            and voice_client.is_connected()
-        ):
-            await voice_client.disconnect(
-                force=True
-            )
-
-            print(
-                "[VOICE] Desconectado "
-                "por 5 minutos de inactividad."
-            )
-
-    except asyncio.CancelledError:
-        # Alguien volvió a utilizar el bot
-        # antes de que pasaran los 5 minutos.
-        pass
-
-    except Exception as exc:
-        print(
-            "Error en desconexión "
-            f"automática: {exc}"
-        )
-
-    finally:
-        current = guild_idle_tasks.get(
-            guild_id
-        )
-
-        if current is asyncio.current_task():
-            guild_idle_tasks.pop(
-                guild_id,
-                None,
-            )
-
-
-def schedule_idle_disconnect(
-    bot,
-    guild_id,
-):
-    # Reinicia el contador.
-    cancel_idle_disconnect(
-        guild_id
-    )
-
-    guild_idle_tasks[
-        guild_id
-    ] = asyncio.create_task(
-        idle_disconnect_worker(
-            bot,
-            guild_id,
+    await bot.change_presence(
+        activity=discord.CustomActivity(
+            name=text
         )
     )
