@@ -1,40 +1,48 @@
-import discord
+import asyncio
+import inspect
+import signal
 
+import discord
 from discord import app_commands
 from discord.ext import commands
 
 from config import DISCORD_TOKEN
 
 from penguspeak.database import (
-    init_database,
-    get_user_voice,
     get_nickname,
-    set_nickname,
+    get_user_voice,
+    init_database,
     remove_nickname,
+    set_nickname,
+)
+
+from penguspeak.ocr import (
+    get_attachment_ocr_text,
+    is_supported_image,
 )
 
 from penguspeak.queue import (
     add_to_queue,
-    remove_next_user_item,
     ensure_guild_worker,
+    remove_next_user_item,
 )
 
 from penguspeak.state import (
     activate_user,
-    deactivate_user,
-    is_user_active,
-    get_guild_active_count,
-    guild_current_items,
-    guild_cancelled_items,
-    ensure_guild_state,
     cancel_idle_disconnect,
+    deactivate_user,
+    ensure_guild_state,
+    get_guild_active_count,
+    get_guild_active_users,
+    guild_cancelled_items,
+    guild_current_items,
+    is_user_active,
     schedule_idle_disconnect,
     update_presence,
 )
 
 from penguspeak.text import (
     build_spoken_message,
-    get_spoken_name,
     is_valid_nickname,
     normalize_spaces,
 )
@@ -50,80 +58,269 @@ from penguspeak.voices import (
 
 
 # ============================================================
-# CONFIGURACIÓN
+# BOT
 # ============================================================
 
 intents = discord.Intents.default()
 
-intents.message_content = True
+intents.guilds = True
 intents.voice_states = True
+intents.messages = True
+intents.message_content = True
 
-bot = commands.Bot(
+
+class PenguSpeakBot(
+    commands.Bot
+):
+    async def setup_hook(
+        self,
+    ):
+        init_database()
+
+        register_signal_handlers()
+
+        synced = (
+            await self.tree.sync()
+        )
+
+        root_names = {
+            command.name
+            for command in synced
+        }
+
+        print(
+            f"{len(root_names)} grupos "
+            "de comandos sincronizados."
+        )
+
+
+bot = PenguSpeakBot(
     command_prefix="!",
     intents=intents,
 )
 
 
 # ============================================================
-# BASE DE DATOS
+# GRUPOS DE COMANDOS
 # ============================================================
 
-init_database()
+tts_group = app_commands.Group(
+    name="tts",
+    description=(
+        "Comandos de texto a voz."
+    ),
+)
+
+voz_group = app_commands.Group(
+    name="voz",
+    description=(
+        "Consulta tu voz actual."
+    ),
+)
+
+voces_group = app_commands.Group(
+    name="voces",
+    description=(
+        "Explora y selecciona voces."
+    ),
+)
+
+apodo_group = app_commands.Group(
+    name="apodo",
+    description=(
+        "Configura tu nombre para TTS."
+    ),
+)
 
 
 # ============================================================
-# CONEXIÓN A VOZ
+# CIERRE LIMPIO
 # ============================================================
+
+shutdown_started = False
+
+
+async def shutdown_bot():
+    global shutdown_started
+
+    if shutdown_started:
+        return
+
+    shutdown_started = True
+
+    print(
+        "[SHUTDOWN] Cerrando PenguSpeak..."
+    )
+
+    for voice_client in list(
+        bot.voice_clients
+    ):
+        try:
+            if voice_client.is_playing():
+                voice_client.stop()
+
+            await voice_client.disconnect(
+                force=True
+            )
+
+        except Exception as exc:
+            print(
+                "[SHUTDOWN] Error "
+                "desconectando voz: "
+                f"{exc}"
+            )
+
+    try:
+        await bot.close()
+
+    except Exception as exc:
+        print(
+            "[SHUTDOWN] Error cerrando bot: "
+            f"{exc}"
+        )
+
+
+def register_signal_handlers():
+    try:
+        loop = (
+            asyncio.get_running_loop()
+        )
+
+    except RuntimeError:
+        return
+
+    for sig in (
+        signal.SIGINT,
+        signal.SIGTERM,
+        signal.SIGHUP,
+    ):
+        try:
+            loop.add_signal_handler(
+                sig,
+                lambda: asyncio.create_task(
+                    shutdown_bot()
+                ),
+            )
+
+        except (
+            NotImplementedError,
+            RuntimeError,
+        ):
+            pass
+
+
+# ============================================================
+# UTILIDADES DE VOZ
+# ============================================================
+
+async def ensure_self_deaf(
+    guild,
+    channel,
+):
+    """
+    Fuerza self_deaf=True.
+
+    También se usa después de mover el bot de canal,
+    porque Discord puede perder el estado de
+    ensordecido durante el movimiento.
+    """
+
+    try:
+        await guild.change_voice_state(
+            channel=channel,
+            self_deaf=True,
+        )
+
+    except Exception as exc:
+        print(
+            "[VOICE] No pude aplicar "
+            f"self_deaf: {exc}"
+        )
+
 
 async def get_voice_client(
-    interaction: discord.Interaction,
+    interaction,
 ):
     if not interaction.guild:
         return None
 
+    member = (
+        interaction.user
+    )
+
     if not isinstance(
-        interaction.user,
+        member,
         discord.Member,
     ):
         return None
 
     if (
-        not interaction.user.voice
-        or not interaction.user.voice.channel
+        not member.voice
+        or not member.voice.channel
     ):
         return None
 
-    guild_id = (
-        interaction.guild.id
+    guild = (
+        interaction.guild
     )
 
     channel = (
-        interaction.user.voice.channel
+        member.voice.channel
     )
 
-    voice_client = (
-        interaction.guild.voice_client
+    guild_id = (
+        guild.id
     )
 
-    # Hay actividad nueva.
-    # Cancelamos una posible desconexión.
     cancel_idle_disconnect(
         guild_id
     )
 
-    if voice_client is None:
+    voice_client = (
+        guild.voice_client
+    )
+
+    # --------------------------------------------------------
+    # CONECTAR
+    # --------------------------------------------------------
+
+    if (
+        voice_client is None
+        or not voice_client.is_connected()
+    ):
         voice_client = (
             await channel.connect(
-		self_deaf=True
-        	)
+                self_deaf=True
+            )
         )
 
-    elif (
+        await ensure_self_deaf(
+            guild,
+            channel,
+        )
+
+        ensure_guild_worker(
+            bot,
+            guild_id,
+        )
+
+        return voice_client
+
+    # --------------------------------------------------------
+    # MOVER
+    # --------------------------------------------------------
+
+    if (
         voice_client.channel
         != channel
     ):
         await voice_client.move_to(
             channel
+        )
+
+        await ensure_self_deaf(
+            guild,
+            channel,
         )
 
     ensure_guild_worker(
@@ -135,18 +332,50 @@ async def get_voice_client(
 
 
 # ============================================================
-# EVENTOS
+# COMPROBAR USUARIOS TTS EN VOZ
+# ============================================================
+
+def guild_has_active_user_in_voice(
+    guild,
+):
+    guild_id = (
+        guild.id
+    )
+
+    for user_id in (
+        get_guild_active_users(
+            guild_id
+        )
+    ):
+        member = guild.get_member(
+            user_id
+        )
+
+        if (
+            member
+            and member.voice
+            and member.voice.channel
+        ):
+            return True
+
+    return False
+
+
+# ============================================================
+# READY
 # ============================================================
 
 @bot.event
 async def on_ready():
     print(
-        f"PenguSpeak conectado como {bot.user}"
+        f"PenguSpeak conectado como "
+        f"{bot.user}"
     )
 
-    print(
-        f"ID: {bot.user.id}"
-    )
+    if bot.user:
+        print(
+            f"ID: {bot.user.id}"
+        )
 
     await update_presence(
         bot
@@ -154,7 +383,7 @@ async def on_ready():
 
 
 # ============================================================
-# CAMBIOS EN CANALES DE VOZ
+# CAMBIOS DE CANAL DE VOZ
 # ============================================================
 
 @bot.event
@@ -163,8 +392,15 @@ async def on_voice_state_update(
     before,
     after,
 ):
+    if member.bot:
+        return
+
+    guild = (
+        member.guild
+    )
+
     guild_id = (
-        member.guild.id
+        guild.id
     )
 
     if not is_user_active(
@@ -173,47 +409,63 @@ async def on_voice_state_update(
     ):
         return
 
-    voice_client = (
-        member.guild.voice_client
-    )
+    # --------------------------------------------------------
+    # TODAVÍA HAY ALGÚN USUARIO TTS EN VOZ
+    #
+    # Conservamos la sesión.
+    # --------------------------------------------------------
 
-    # El usuario sigue en el mismo canal
-    # que el bot.
-    if (
-        after.channel
-        and voice_client
-        and voice_client.channel
-        == after.channel
+    if guild_has_active_user_in_voice(
+        guild
     ):
         return
 
-    # Salió del canal donde estaba el bot
-    # o salió completamente de voz.
-    deactivate_user(
-        guild_id,
-        member.id,
+    # --------------------------------------------------------
+    # EL ÚLTIMO USUARIO TTS SALIÓ DE VOZ
+    #
+    # Aquí sí termina realmente la sesión.
+    # --------------------------------------------------------
+
+    get_guild_active_users(
+        guild_id
+    ).clear()
+
+    voice_client = (
+        guild.voice_client
     )
+
+    if (
+        voice_client
+        and voice_client.is_connected()
+    ):
+        if voice_client.is_playing():
+            voice_client.stop()
+
+        try:
+            await voice_client.disconnect(
+                force=True
+            )
+
+        except Exception as exc:
+            print(
+                "[VOICE] Error "
+                "desconectando: "
+                f"{exc}"
+            )
 
     await update_presence(
         bot
     )
 
-    # Si ya no queda nadie utilizando TTS,
-    # empieza el contador de 5 minutos.
-    if (
-        get_guild_active_count(
-            guild_id
-        )
-        == 0
-    ):
-        schedule_idle_disconnect(
-            bot,
-            guild_id,
-        )
+    print(
+        f"[VOICE] Servidor {guild_id}: "
+        "último usuario TTS salió de voz. "
+        "Sesión terminada."
+    )
 
 
 # ============================================================
-# MENSAJES
+# MENSAJES DEL MODO CONTINUO
 # ============================================================
 
 @bot.event
@@ -226,13 +478,21 @@ async def on_message(
     if not message.guild:
         return
 
+    guild = (
+        message.guild
+    )
+
     guild_id = (
-        message.guild.id
+        guild.id
     )
 
     user_id = (
         message.author.id
     )
+
+    # --------------------------------------------------------
+    # SOLO /tts iniciar
+    # --------------------------------------------------------
 
     if not is_user_active(
         guild_id,
@@ -240,74 +500,108 @@ async def on_message(
     ):
         return
 
+    if not isinstance(
+        message.author,
+        discord.Member,
+    ):
+        return
+
+    # --------------------------------------------------------
+    # EL USUARIO DEBE SEGUIR EN VOZ
+    # --------------------------------------------------------
+
     if (
-        not isinstance(
-            message.author,
-            discord.Member,
-        )
-        or not message.author.voice
+        not message.author.voice
         or not message.author.voice.channel
     ):
-        deactivate_user(
-            guild_id,
-            user_id,
-        )
-
-        await update_presence(
-            bot
-        )
-
-        if (
-            get_guild_active_count(
-                guild_id
-            )
-            == 0
-        ):
-            schedule_idle_disconnect(
-                bot,
-                guild_id,
-            )
-
         return
 
-    voice_client = (
-        message.guild.voice_client
+    user_channel = (
+        message.author.voice.channel
     )
 
+    voice_client = (
+        guild.voice_client
+    )
+
+    # --------------------------------------------------------
+    # RECONEXIÓN AUTOMÁTICA
+    #
+    # Si salió por inactividad, el usuario sigue
+    # teniendo TTS activo.
+    # --------------------------------------------------------
+
     if (
-        not voice_client
+        voice_client is None
         or not voice_client.is_connected()
     ):
-        return
+        try:
+            print(
+                "[VOICE] Reconectando "
+                "automáticamente a "
+                f"{user_channel.name}..."
+            )
+
+            voice_client = (
+                await user_channel.connect(
+                    self_deaf=True
+                )
+            )
+
+            await ensure_self_deaf(
+                guild,
+                user_channel,
+            )
+
+            print(
+                "[VOICE] Reconectado "
+                "automáticamente."
+            )
+
+        except Exception as exc:
+            print(
+                "[VOICE] Error en reconexión "
+                f"automática: {exc}"
+            )
+
+            return
+
+    # --------------------------------------------------------
+    # ESTÁ EN OTRO CANAL
+    #
+    # No movemos al bot automáticamente porque puede
+    # estar atendiendo usuarios del canal actual.
+    # --------------------------------------------------------
 
     if (
         voice_client.channel
-        != message.author.voice.channel
+        != user_channel
     ):
-        deactivate_user(
-            guild_id,
-            user_id,
-        )
-
-        await update_presence(
-            bot
-        )
-
-        if (
-            get_guild_active_count(
-                guild_id
-            )
-            == 0
-        ):
-            schedule_idle_disconnect(
-                bot,
-                guild_id,
-            )
-
         return
 
-    text = await build_spoken_message(
-        message
+    ensure_guild_worker(
+        bot,
+        guild_id,
+    )
+
+    cancel_idle_disconnect(
+        guild_id
+    )
+
+    # --------------------------------------------------------
+    # CONSTRUIR MENSAJE
+    #
+    # IMPORTANTE:
+    # build_spoken_message() ya NO debe hacer OCR.
+    #
+    # Imagen normal:
+    # "X envió una imagen"
+    # --------------------------------------------------------
+
+    text = (
+        await build_spoken_message(
+            message
+        )
     )
 
     if not text:
@@ -316,11 +610,6 @@ async def on_message(
     voice_id = get_user_voice(
         user_id,
         VOICES,
-    )
-
-    ensure_guild_worker(
-        bot,
-        guild_id,
     )
 
     add_to_queue(
@@ -339,27 +628,13 @@ async def on_message(
 
 
 # ============================================================
-# /tts
-# ============================================================
-
-tts_group = app_commands.Group(
-    name="tts",
-    description=(
-        "Controla el sistema "
-        "de texto a voz."
-    ),
-)
-
-
-# ============================================================
 # /tts iniciar
 # ============================================================
 
 @tts_group.command(
     name="iniciar",
     description=(
-        "Empieza a leer automáticamente "
-        "tus mensajes."
+        "Lee automáticamente tus mensajes."
     ),
 )
 async def tts_iniciar(
@@ -368,6 +643,15 @@ async def tts_iniciar(
     await interaction.response.defer(
         ephemeral=True
     )
+
+    if not interaction.guild:
+        await interaction.followup.send(
+            "Este comando solo puede "
+            "usarse dentro de un servidor.",
+            ephemeral=True,
+        )
+
+        return
 
     try:
         voice_client = (
@@ -403,27 +687,41 @@ async def tts_iniciar(
         interaction.guild.id
     )
 
+    user_id = (
+        interaction.user.id
+    )
+
+    if is_user_active(
+        guild_id,
+        user_id,
+    ):
+        await interaction.followup.send(
+            "🔊 Ya tienes el TTS activado.",
+            ephemeral=True,
+        )
+
+        return
+
     activate_user(
         guild_id,
-        interaction.user.id,
+        user_id,
     )
 
     cancel_idle_disconnect(
         guild_id
     )
 
+    ensure_guild_worker(
+        bot,
+        guild_id,
+    )
+
     await update_presence(
         bot
     )
 
-    voice_id = get_user_voice(
-        interaction.user.id,
-        VOICES,
-    )
-
     await interaction.followup.send(
-        "✅ TTS activado.\n"
-        f"Voz: **{get_voice_label(voice_id)}**",
+        "🔊 TTS activado.",
         ephemeral=True,
     )
 
@@ -491,32 +789,94 @@ async def tts_detener(
         )
 
     await interaction.response.send_message(
-        "⏹️ TTS desactivado.",
+        "⏹ TTS desactivado.",
         ephemeral=True,
     )
 
 
 # ============================================================
 # /tts decir
+#
+# texto e imagen son opcionales.
+#
+# - texto
+# - imagen
+# - texto + imagen
+#
+# El OCR SOLO se ejecuta aquí.
 # ============================================================
 
 @tts_group.command(
     name="decir",
     description=(
-        "Añade un único mensaje "
-        "a la cola de voz."
+        "Reproduce texto o lee "
+        "el texto de una imagen."
     ),
 )
 @app_commands.describe(
-    texto="Texto que quieres reproducir"
+    texto=(
+        "Texto que quieres reproducir"
+    ),
+    imagen=(
+        "Imagen cuyo texto quieres leer"
+    ),
 )
 async def tts_decir(
     interaction: discord.Interaction,
-    texto: str,
+    texto: str | None = None,
+    imagen: discord.Attachment | None = None,
 ):
-    await interaction.response.defer(
-        ephemeral=True
-    )
+    # /tts decir es PÚBLICO.
+    await interaction.response.defer()
+
+    # --------------------------------------------------------
+    # SERVIDOR
+    # --------------------------------------------------------
+
+    if not interaction.guild:
+        await interaction.followup.send(
+            "❌ Este comando solo puede "
+            "usarse dentro de un servidor."
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # VALIDAR PARÁMETROS
+    # --------------------------------------------------------
+
+    if texto:
+        texto = normalize_spaces(
+            texto
+        )
+
+    if (
+        not texto
+        and imagen is None
+    ):
+        await interaction.followup.send(
+            "❌ Debes escribir texto "
+            "o adjuntar una imagen."
+        )
+
+        return
+
+    if (
+        imagen is not None
+        and not is_supported_image(
+            imagen
+        )
+    ):
+        await interaction.followup.send(
+            "❌ El archivo adjunto "
+            "no es una imagen compatible."
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # CONECTAR A VOZ
+    # --------------------------------------------------------
 
     try:
         voice_client = (
@@ -533,8 +893,7 @@ async def tts_decir(
 
         await interaction.followup.send(
             "❌ No pude conectarme "
-            "al canal de voz.",
-            ephemeral=True,
+            "al canal de voz."
         )
 
         return
@@ -542,23 +901,122 @@ async def tts_decir(
     if voice_client is None:
         await interaction.followup.send(
             "Primero entra a un "
-            "canal de voz.",
-            ephemeral=True,
+            "canal de voz."
         )
 
         return
 
-    texto = normalize_spaces(
-        texto
+    # --------------------------------------------------------
+    # NOMBRE PÚBLICO
+    #
+    # Esto corrige el NameError que te salió.
+    # --------------------------------------------------------
+
+    display_name = (
+        interaction.user.display_name
+        if isinstance(
+            interaction.user,
+            discord.Member,
+        )
+        else interaction.user.name
     )
 
-    if not texto:
+    # --------------------------------------------------------
+    # CONSTRUIR TEXTO PARA TTS
+    # --------------------------------------------------------
+
+    spoken_parts = []
+
+    if texto:
+        spoken_parts.append(
+            texto
+        )
+
+    ocr_text = ""
+
+    # --------------------------------------------------------
+    # OCR
+    #
+    # SOLO existe aquí.
+    # --------------------------------------------------------
+
+    if imagen is not None:
+        print(
+            "[TTS DECIR] "
+            "Procesando imagen con OCR..."
+        )
+
+        try:
+            ocr_text = (
+                await get_attachment_ocr_text(
+                    imagen
+                )
+            )
+
+        except Exception as exc:
+            print(
+                "[TTS DECIR] "
+                "Error procesando OCR: "
+                f"{exc}"
+            )
+
+            ocr_text = ""
+
+        if ocr_text:
+            spoken_parts.append(
+                ocr_text
+            )
+
+    final_text = normalize_spaces(
+        ". ".join(
+            spoken_parts
+        )
+    )
+
+    # --------------------------------------------------------
+    # SI LA IMAGEN NO TENÍA TEXTO
+    #
+    # Igual mostramos la imagen en Discord.
+    # --------------------------------------------------------
+
+    if not final_text:
+        if imagen is not None:
+            try:
+                image_file = (
+                    await imagen.to_file()
+                )
+
+                await interaction.followup.send(
+                    content=(
+                        f"**{display_name}:** "
+                        "*(no se detectó texto)*"
+                    ),
+                    file=image_file,
+                )
+
+            except Exception as exc:
+                print(
+                    "[TTS DECIR] "
+                    "Error enviando imagen: "
+                    f"{exc}"
+                )
+
+                await interaction.followup.send(
+                    "❌ No pude detectar texto "
+                    "en la imagen."
+                )
+
+            return
+
         await interaction.followup.send(
-            "El mensaje está vacío.",
-            ephemeral=True,
+            "❌ No hay nada que reproducir."
         )
 
         return
+
+    # --------------------------------------------------------
+    # AÑADIR A COLA
+    # --------------------------------------------------------
 
     guild_id = (
         interaction.guild.id
@@ -581,13 +1039,10 @@ async def tts_decir(
     add_to_queue(
         guild_id=guild_id,
         user_id=user_id,
-        text=texto,
+        text=final_text,
         voice_id=voice_id,
     )
 
-    # Si nadie tiene el modo continuo activo,
-    # el bot se desconectará 5 minutos después
-    # de esta actividad.
     if (
         get_guild_active_count(
             guild_id
@@ -599,9 +1054,62 @@ async def tts_decir(
             guild_id,
         )
 
+    # --------------------------------------------------------
+    # RESPUESTA PÚBLICA
+    #
+    # MUY IMPORTANTE:
+    #
+    # El OCR NO se muestra.
+    # Si hubo imagen, mostramos LA IMAGEN ORIGINAL.
+    # --------------------------------------------------------
+
+    if imagen is not None:
+        try:
+            image_file = (
+                await imagen.to_file()
+            )
+
+            if texto:
+                await interaction.followup.send(
+                    content=(
+                        f"**{display_name}:** "
+                        f"{texto}"
+                    ),
+                    file=image_file,
+                )
+
+            else:
+                await interaction.followup.send(
+                    content=(
+                        f"**{display_name}:**"
+                    ),
+                    file=image_file,
+                )
+
+        except Exception as exc:
+            print(
+                "[TTS DECIR] "
+                "Error enviando imagen: "
+                f"{exc}"
+            )
+
+            # Si por algún motivo Discord no puede
+            # volver a descargar la imagen, al menos
+            # cerramos correctamente la interacción.
+            await interaction.followup.send(
+                f"**{display_name}:** "
+                "🖼️ imagen procesada"
+            )
+
+        return
+
+    # --------------------------------------------------------
+    # SOLO TEXTO
+    # --------------------------------------------------------
+
     await interaction.followup.send(
-        "🔊 Mensaje añadido a la cola.",
-        ephemeral=True,
+        f"**{display_name}:** "
+        f"{final_text}"
     )
 
 
@@ -650,11 +1158,17 @@ async def tts_saltar(
         interaction.guild.voice_client
     )
 
-    # El audio actual pertenece
-    # al usuario que ejecutó el comando.
+    # --------------------------------------------------------
+    # MENSAJE ACTUAL
+    #
+    # Solo puedes parar el tuyo.
+    # --------------------------------------------------------
+
     if (
-        current
-        and current["user_id"]
+        current is not None
+        and current.get(
+            "user_id"
+        )
         == user_id
     ):
         guild_cancelled_items[
@@ -670,15 +1184,16 @@ async def tts_saltar(
             voice_client.stop()
 
         await interaction.response.send_message(
-            "⏭️ Saltaste tu "
-            "mensaje actual.",
+            "⏭ Saltaste tu mensaje actual.",
             ephemeral=True,
         )
 
         return
 
-    # Si está hablando otra persona,
-    # jamás se interrumpe.
+    # --------------------------------------------------------
+    # PRÓXIMO MENSAJE EN COLA DEL USUARIO
+    # --------------------------------------------------------
+
     removed = (
         remove_next_user_item(
             guild_id,
@@ -688,8 +1203,8 @@ async def tts_saltar(
 
     if removed:
         await interaction.response.send_message(
-            "⏭️ Eliminé tu próximo "
-            "mensaje de la cola.",
+            "⏭ Saltaste tu próximo "
+            "mensaje en cola.",
             ephemeral=True,
         )
 
@@ -697,144 +1212,244 @@ async def tts_saltar(
 
     await interaction.response.send_message(
         "No tienes ningún mensaje "
-        "que saltar.",
+        "que pueda saltar.",
         ephemeral=True,
     )
 
 
 # ============================================================
-# /voz
+# /voz actual
 # ============================================================
-
-voz_group = app_commands.Group(
-    name="voz",
-    description=(
-        "Consulta tu configuración "
-        "de voz."
-    ),
-)
-
 
 @voz_group.command(
     name="actual",
     description=(
-        "Muestra la voz "
-        "que tienes seleccionada."
+        "Muestra tu voz TTS actual."
     ),
 )
 async def voz_actual(
     interaction: discord.Interaction,
 ):
+    user_id = (
+        interaction.user.id
+    )
+
     voice_id = get_user_voice(
-        interaction.user.id,
+        user_id,
         VOICES,
     )
 
+    label = get_voice_label(
+        voice_id
+    )
+
     await interaction.response.send_message(
-        "🔊 Tu voz actual es "
-        f"**{get_voice_label(voice_id)}**.",
+        f"🔊 Tu voz actual es "
+        f"**{label}**.",
         ephemeral=True,
     )
 
 
 # ============================================================
-# /voces
+# NAVEGADOR DE VOCES
 # ============================================================
 
-voces_group = app_commands.Group(
-    name="voces",
-    description=(
-        "Explora y selecciona "
-        "las voces disponibles."
-    ),
-)
-
-
-async def mostrar_catalogo(
-    interaction: discord.Interaction,
-    gender: str,
+async def send_voice_browser(
+    interaction,
+    gender,
 ):
-    await interaction.response.defer(
-        ephemeral=True
-    )
+    """
+    Intenta usar VoiceBrowserView sin acoplar bot.py
+    demasiado a la firma exacta de views.py.
+
+    Esto permite conservar tu views.py separado.
+    """
+
+    view = None
+
+    # --------------------------------------------------------
+    # PRIMERO: inspeccionar parámetros conocidos.
+    # --------------------------------------------------------
 
     try:
+        signature = inspect.signature(
+            VoiceBrowserView
+        )
+
+        kwargs = {}
+
+        parameter_names = set(
+            signature.parameters.keys()
+        )
+
+        if "user_id" in parameter_names:
+            kwargs["user_id"] = (
+                interaction.user.id
+            )
+
+        if "owner_id" in parameter_names:
+            kwargs["owner_id"] = (
+                interaction.user.id
+            )
+
+        if "gender" in parameter_names:
+            kwargs["gender"] = gender
+
+        if "interaction" in parameter_names:
+            kwargs["interaction"] = (
+                interaction
+            )
+
         view = VoiceBrowserView(
-            gender=gender,
-            owner_id=interaction.user.id,
+            **kwargs
         )
 
-        await interaction.followup.send(
-            content=view.get_page_content(),
-            files=view.get_page_files(),
-            view=view,
+    except Exception:
+        view = None
+
+    # --------------------------------------------------------
+    # FALLBACKS
+    # --------------------------------------------------------
+
+    if view is None:
+        attempts = (
+            (
+                interaction.user.id,
+                gender,
+            ),
+            (
+                gender,
+                interaction.user.id,
+            ),
+            (
+                gender,
+            ),
+            (),
+        )
+
+        for args in attempts:
+            try:
+                view = VoiceBrowserView(
+                    *args
+                )
+
+                break
+
+            except TypeError:
+                continue
+
+    if view is None:
+        await interaction.response.send_message(
+            "❌ No pude abrir "
+            "el selector de voces.",
             ephemeral=True,
         )
 
-    except Exception as exc:
-        print(
-            "Error mostrando voces: "
-            f"{exc}"
+        return
+
+    # --------------------------------------------------------
+    # Si views.py tiene su propio método de envío inicial,
+    # usamos ese.
+    # --------------------------------------------------------
+
+    for method_name in (
+        "send_initial_message",
+        "send_initial",
+        "send",
+    ):
+        method = getattr(
+            view,
+            method_name,
+            None,
         )
 
-        await interaction.followup.send(
-            "❌ No pude cargar "
-            "las demos.",
-            ephemeral=True,
-        )
+        if (
+            method is not None
+            and callable(method)
+        ):
+            try:
+                result = method(
+                    interaction
+                )
 
+                if inspect.isawaitable(
+                    result
+                ):
+                    await result
+
+                return
+
+            except TypeError:
+                pass
+
+    # --------------------------------------------------------
+    # FALLBACK ESTÁNDAR
+    # --------------------------------------------------------
+
+    title = (
+        "Voces masculinas"
+        if gender == "male"
+        else "Voces femeninas"
+    )
+
+    await interaction.response.send_message(
+        f"🔊 **{title}**",
+        view=view,
+        ephemeral=True,
+    )
+
+
+# ============================================================
+# /voces hombres
+# ============================================================
 
 @voces_group.command(
     name="hombres",
     description=(
-        "Escucha demos de "
-        "voces masculinas."
+        "Explora las voces masculinas."
     ),
 )
 async def voces_hombres(
     interaction: discord.Interaction,
 ):
-    await mostrar_catalogo(
+    await send_voice_browser(
         interaction,
         "male",
     )
 
 
+# ============================================================
+# /voces mujeres
+# ============================================================
+
 @voces_group.command(
     name="mujeres",
     description=(
-        "Escucha demos de "
-        "voces femeninas."
+        "Explora las voces femeninas."
     ),
 )
 async def voces_mujeres(
     interaction: discord.Interaction,
 ):
-    await mostrar_catalogo(
+    await send_voice_browser(
         interaction,
         "female",
     )
 
 
 # ============================================================
-# /apodo
+# /apodo poner
 # ============================================================
-
-apodo_group = app_commands.Group(
-    name="apodo",
-    description=(
-        "Configura el apodo que "
-        "el bot dirá al leer tus mensajes."
-    ),
-)
-
 
 @apodo_group.command(
     name="poner",
-    description="Establece tu apodo.",
+    description=(
+        "Elige el nombre que PenguSpeak "
+        "usará para referirse a ti."
+    ),
 )
 @app_commands.describe(
-    nombre="Solo letras, números y espacios"
+    nombre="Tu apodo para el TTS"
 )
 async def apodo_poner(
     interaction: discord.Interaction,
@@ -846,8 +1461,7 @@ async def apodo_poner(
 
     if not nombre:
         await interaction.response.send_message(
-            "El apodo no puede "
-            "estar vacío.",
+            "❌ El apodo está vacío.",
             ephemeral=True,
         )
 
@@ -855,8 +1469,8 @@ async def apodo_poner(
 
     if len(nombre) > 30:
         await interaction.response.send_message(
-            "El apodo puede tener "
-            "como máximo 30 caracteres.",
+            "❌ El apodo no puede tener "
+            "más de 30 caracteres.",
             ephemeral=True,
         )
 
@@ -866,7 +1480,7 @@ async def apodo_poner(
         nombre
     ):
         await interaction.response.send_message(
-            "El apodo solo puede contener "
+            "❌ El apodo solo puede contener "
             "letras, números y espacios.",
             ephemeral=True,
         )
@@ -885,6 +1499,10 @@ async def apodo_poner(
     )
 
 
+# ============================================================
+# /apodo quitar
+# ============================================================
+
 @apodo_group.command(
     name="quitar",
     description=(
@@ -900,8 +1518,8 @@ async def apodo_quitar(
 
     if not nickname:
         await interaction.response.send_message(
-            "No tienes un apodo "
-            "personalizado.",
+            "No tienes ningún "
+            "apodo configurado.",
             ephemeral=True,
         )
 
@@ -912,12 +1530,14 @@ async def apodo_quitar(
     )
 
     await interaction.response.send_message(
-        "✅ Apodo eliminado. "
-        "Se volverá a usar tu "
-        "nombre visible de Discord.",
+        "✅ Apodo eliminado.",
         ephemeral=True,
     )
 
+
+# ============================================================
+# /apodo actual
+# ============================================================
 
 @apodo_group.command(
     name="actual",
@@ -941,23 +1561,14 @@ async def apodo_actual(
 
         return
 
-    display_name = (
-        get_spoken_name(
-            interaction.user
-        )
-    )
-
     await interaction.response.send_message(
-        "No tienes un apodo "
-        "personalizado.\n"
-        f"Se está usando "
-        f"**{display_name}**.",
+        "No tienes un apodo personalizado.",
         ephemeral=True,
     )
 
 
 # ============================================================
-# REGISTRAR COMANDOS
+# REGISTRAR GRUPOS
 # ============================================================
 
 bot.tree.add_command(
@@ -978,21 +1589,7 @@ bot.tree.add_command(
 
 
 # ============================================================
-# SINCRONIZACIÓN
-# ============================================================
-
-@bot.event
-async def setup_hook():
-    synced = await bot.tree.sync()
-
-    print(
-        f"{len(synced)} grupos "
-        "de comandos sincronizados."
-    )
-
-
-# ============================================================
-# INICIAR
+# EJECUTAR
 # ============================================================
 
 bot.run(

@@ -2,13 +2,13 @@ import re
 import unicodedata
 
 import discord
+import emoji
 
 from penguspeak.database import (
     get_nickname,
 )
 
 from penguspeak.ocr import (
-    get_message_ocr_text,
     is_supported_image,
 )
 
@@ -31,6 +31,29 @@ def normalize_spaces(
     ).strip()
 
 
+def format_name_list(
+    names,
+):
+    if not names:
+        return ""
+
+    if len(names) == 1:
+        return names[0]
+
+    if len(names) == 2:
+        return (
+            f"{names[0]} "
+            f"y {names[1]}"
+        )
+
+    return (
+        ", ".join(
+            names[:-1]
+        )
+        + f" y {names[-1]}"
+    )
+
+
 # ============================================================
 # VALIDACIÓN DE APODOS
 # ============================================================
@@ -38,19 +61,6 @@ def normalize_spaces(
 def is_valid_nickname(
     text,
 ):
-    """
-    Permite únicamente:
-    - Letras
-    - Números
-    - Espacios
-
-    No permite:
-    - Emojis
-    - Símbolos
-    - Menciones
-    - Puntuación
-    """
-
     if not text:
         return False
 
@@ -65,12 +75,8 @@ def is_valid_nickname(
         )
 
         if (
-            not category.startswith(
-                "L"
-            )
-            and not category.startswith(
-                "N"
-            )
+            not category.startswith("L")
+            and not category.startswith("N")
         ):
             return False
 
@@ -84,16 +90,6 @@ def is_valid_nickname(
 def clean_discord_name(
     name,
 ):
-    """
-    Elimina emojis y símbolos del nombre.
-
-    Ejemplo:
-
-        🌸 Heather 🎮
-             ↓
-        Heather
-    """
-
     cleaned = []
 
     for character in name:
@@ -111,12 +107,8 @@ def clean_discord_name(
         )
 
         if (
-            category.startswith(
-                "L"
-            )
-            or category.startswith(
-                "N"
-            )
+            category.startswith("L")
+            or category.startswith("N")
         ):
             cleaned.append(
                 character
@@ -158,7 +150,7 @@ def get_spoken_name(
 
 
 # ============================================================
-# URLs
+# URLS
 # ============================================================
 
 URL_PATTERN = re.compile(
@@ -167,29 +159,84 @@ URL_PATTERN = re.compile(
 )
 
 
-def replace_urls(
+def message_contains_url(
+    message,
+):
+    return bool(
+        URL_PATTERN.search(
+            message.content
+            or ""
+        )
+    )
+
+
+def remove_urls(
     text,
 ):
-    return URL_PATTERN.sub(
-        " envió un enlace ",
-        text,
+    return normalize_spaces(
+        URL_PATTERN.sub(
+            " ",
+            text,
+        )
     )
 
 
 # ============================================================
-# EMOJIS PERSONALIZADOS
+# EMOJIS PERSONALIZADOS DE DISCORD
 # ============================================================
 
 CUSTOM_EMOJI_PATTERN = re.compile(
-    r"<a?:[A-Za-z0-9_]+:\d+>"
+    r"<a?:([A-Za-z0-9_]+):\d+>"
 )
 
 
-def remove_custom_emojis(
+def humanize_custom_emoji_name(
+    name,
+):
+    # snake_case
+    name = name.replace(
+        "_",
+        " ",
+    )
+
+    # camelCase
+    name = re.sub(
+        r"(?<=[a-záéíóúñ])"
+        r"(?=[A-ZÁÉÍÓÚÑ])",
+        " ",
+        name,
+    )
+
+    return normalize_spaces(
+        name
+    )
+
+
+def replace_custom_emojis(
     text,
 ):
+    def repl(
+        match,
+    ):
+        emoji_name = (
+            match.group(1)
+        )
+
+        spoken_name = (
+            humanize_custom_emoji_name(
+                emoji_name
+            )
+        )
+
+        if not spoken_name:
+            return " "
+
+        return (
+            f" {spoken_name} "
+        )
+
     return CUSTOM_EMOJI_PATTERN.sub(
-        " ",
+        repl,
         text,
     )
 
@@ -198,9 +245,96 @@ def remove_custom_emojis(
 # EMOJIS UNICODE
 # ============================================================
 
-def remove_unicode_emojis(
+UNICODE_EMOJI_EASTER_EGGS = {
+    "👀": "ojitos void",
+}
+
+
+def humanize_unicode_emoji_name(
+    name,
+):
+    name = name.replace(
+        "_",
+        " ",
+    )
+
+    name = name.replace(
+        "-",
+        " ",
+    )
+
+    return normalize_spaces(
+        name
+    )
+
+
+def replace_unicode_emojis(
     text,
 ):
+    if not text:
+        return ""
+
+    # --------------------------------------------------------
+    # EASTER EGGS
+    # --------------------------------------------------------
+
+    for (
+        unicode_emoji,
+        spoken_text,
+    ) in (
+        UNICODE_EMOJI_EASTER_EGGS.items()
+    ):
+        text = text.replace(
+            unicode_emoji,
+            f" {spoken_text} ",
+        )
+
+    # --------------------------------------------------------
+    # DEMÁS EMOJIS EN ESPAÑOL
+    # --------------------------------------------------------
+
+    text = emoji.demojize(
+        text,
+        language="es",
+        delimiters=(
+            "__EMOJI__",
+            "__",
+        ),
+    )
+
+    pattern = re.compile(
+        r"__EMOJI__(.*?)__"
+    )
+
+    def replace_match(
+        match,
+    ):
+        name = (
+            match.group(1)
+        )
+
+        name = (
+            humanize_unicode_emoji_name(
+                name
+            )
+        )
+
+        if not name:
+            return " "
+
+        return (
+            f" {name} "
+        )
+
+    text = pattern.sub(
+        replace_match,
+        text,
+    )
+
+    # --------------------------------------------------------
+    # SÍMBOLOS RESIDUALES
+    # --------------------------------------------------------
+
     result = []
 
     for character in text:
@@ -210,14 +344,11 @@ def remove_unicode_emojis(
             )
         )
 
-        # Símbolos Unicode.
         if category.startswith(
             "S"
         ):
             continue
 
-        # Componentes invisibles usados
-        # frecuentemente en emojis.
         if category in {
             "Cf",
             "Cs",
@@ -228,8 +359,10 @@ def remove_unicode_emojis(
             character
         )
 
-    return "".join(
-        result
+    return normalize_spaces(
+        "".join(
+            result
+        )
     )
 
 
@@ -237,11 +370,55 @@ def remove_unicode_emojis(
 # MENCIONES DE USUARIOS
 # ============================================================
 
+def get_mentioned_names(
+    message,
+):
+    names = []
+
+    for member in (
+        message.mentions
+    ):
+        name = get_spoken_name(
+            member
+        )
+
+        if name not in names:
+            names.append(
+                name
+            )
+
+    return names
+
+
+def remove_user_mentions(
+    text,
+    message,
+):
+    for member in (
+        message.mentions
+    ):
+        text = text.replace(
+            f"<@{member.id}>",
+            " ",
+        )
+
+        text = text.replace(
+            f"<@!{member.id}>",
+            " ",
+        )
+
+    return normalize_spaces(
+        text
+    )
+
+
 def replace_user_mentions(
     text,
     message,
 ):
-    for member in message.mentions:
+    for member in (
+        message.mentions
+    ):
         name = get_spoken_name(
             member
         )
@@ -278,7 +455,10 @@ def replace_channel_mentions(
 
         text = text.replace(
             f"<#{channel.id}>",
-            f" canal {channel_name} ",
+            (
+                f" canal "
+                f"{channel_name} "
+            ),
         )
 
     return text
@@ -313,23 +493,125 @@ def replace_role_mentions(
 
 
 # ============================================================
-# ARCHIVOS
+# STICKERS
+# ============================================================
+
+def get_sticker_text(
+    message,
+):
+    parts = []
+
+    for sticker in (
+        message.stickers
+    ):
+        sticker_name = (
+            getattr(
+                sticker,
+                "name",
+                "",
+            )
+            or ""
+        )
+
+        sticker_name = (
+            clean_discord_name(
+                sticker_name
+            )
+        )
+
+        if not sticker_name:
+            continue
+
+        parts.append(
+            (
+                "sticker "
+                f"{sticker_name}"
+            )
+        )
+
+    return parts
+
+
+# ============================================================
+# IMÁGENES
+# ============================================================
+
+def count_message_images(
+    message,
+):
+    count = 0
+
+    for attachment in (
+        message.attachments
+    ):
+        if is_supported_image(
+            attachment
+        ):
+            count += 1
+
+    return count
+
+
+# ============================================================
+# VIDEOS
+# ============================================================
+
+VIDEO_EXTENSIONS = (
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".mkv",
+    ".avi",
+    ".m4v",
+)
+
+
+def is_video_attachment(
+    attachment,
+):
+    filename = (
+        attachment.filename
+        or ""
+    ).lower()
+
+    content_type = (
+        attachment.content_type
+        or ""
+    ).lower()
+
+    if content_type.startswith(
+        "video/"
+    ):
+        return True
+
+    return filename.endswith(
+        VIDEO_EXTENSIONS
+    )
+
+
+def count_message_videos(
+    message,
+):
+    count = 0
+
+    for attachment in (
+        message.attachments
+    ):
+        if is_video_attachment(
+            attachment
+        ):
+            count += 1
+
+    return count
+
+
+# ============================================================
+# ARCHIVOS NORMALES
 # ============================================================
 
 def get_regular_attachment_text(
     message,
 ):
-    """
-    GIF:
-        ignorado.
-
-    Imagen:
-        la procesa OCR.
-
-    Otros archivos:
-        "envió un archivo".
-    """
-
     parts = []
 
     for attachment in (
@@ -345,7 +627,7 @@ def get_regular_attachment_text(
             or ""
         ).lower()
 
-        # GIF ignorado completamente.
+        # GIF ignorado.
         if (
             filename.endswith(
                 ".gif"
@@ -355,8 +637,14 @@ def get_regular_attachment_text(
         ):
             continue
 
-        # Las imágenes pertenecen al OCR.
+        # Imágenes procesadas aparte.
         if is_supported_image(
+            attachment
+        ):
+            continue
+
+        # Videos procesados aparte.
+        if is_video_attachment(
             attachment
         ):
             continue
@@ -369,23 +657,26 @@ def get_regular_attachment_text(
 
 
 # ============================================================
-# LIMPIEZA DEL MENSAJE
+# LIMPIEZA DE TEXTO
 # ============================================================
 
-def clean_message_text(
+def process_message_text(
+    text,
     message,
+    *,
+    include_user_mentions=True,
 ):
-    text = (
-        message.content
-        or ""
-    )
+    if include_user_mentions:
+        text = replace_user_mentions(
+            text,
+            message,
+        )
 
-    # Primero las construcciones propias
-    # de Discord.
-    text = replace_user_mentions(
-        text,
-        message,
-    )
+    else:
+        text = remove_user_mentions(
+            text,
+            message,
+        )
 
     text = replace_channel_mentions(
         text,
@@ -397,25 +688,62 @@ def clean_message_text(
         message,
     )
 
-    # Enlaces.
-    text = replace_urls(
+    text = replace_custom_emojis(
         text
     )
 
-    # Emojis.
-    text = remove_custom_emojis(
+    text = replace_unicode_emojis(
         text
     )
 
-    text = remove_unicode_emojis(
+    return normalize_spaces(
         text
     )
 
-    text = normalize_spaces(
-        text
+
+def clean_message_text(
+    message,
+):
+    text = (
+        message.content
+        or ""
     )
 
-    # Archivos normales.
+    text = process_message_text(
+        text,
+        message,
+    )
+
+    # --------------------------------------------------------
+    # STICKERS
+    # --------------------------------------------------------
+
+    stickers = (
+        get_sticker_text(
+            message
+        )
+    )
+
+    if stickers:
+        sticker_text = ". ".join(
+            stickers
+        )
+
+        if text:
+            text = (
+                f"{text}. "
+                f"{sticker_text}"
+            )
+
+        else:
+            text = (
+                sticker_text
+            )
+
+    # --------------------------------------------------------
+    # OTROS ARCHIVOS
+    # --------------------------------------------------------
+
     attachments = (
         get_regular_attachment_text(
             message
@@ -423,17 +751,63 @@ def clean_message_text(
     )
 
     if attachments:
-        extra = ". ".join(
-            attachments
+        attachment_text = (
+            ". ".join(
+                attachments
+            )
         )
 
         if text:
             text = (
-                f"{text}. {extra}"
+                f"{text}. "
+                f"{attachment_text}"
             )
 
         else:
-            text = extra
+            text = (
+                attachment_text
+            )
+
+    return normalize_spaces(
+        text
+    )
+
+
+# ============================================================
+# TEXTO ACOMPAÑANDO MULTIMEDIA
+# ============================================================
+
+def get_media_caption(
+    message,
+):
+    """
+    Obtiene únicamente lo que escribió el usuario
+    junto a una imagen/video/enlace.
+
+    Las menciones de usuarios se eliminan porque,
+    para multimedia, se expresan como:
+
+    "etiquetó a X en una imagen"
+
+    en vez de repetir:
+
+    "mencionó a X".
+    """
+
+    text = (
+        message.content
+        or ""
+    )
+
+    text = remove_urls(
+        text
+    )
+
+    text = process_message_text(
+        text,
+        message,
+        include_user_mentions=False,
+    )
 
     return normalize_spaces(
         text
@@ -489,64 +863,193 @@ async def get_reply_target_name(
 
 
 # ============================================================
+# FRASES DE MULTIMEDIA
+# ============================================================
+
+def build_image_phrase(
+    author_name,
+    image_count,
+    mentioned_names,
+):
+    if mentioned_names:
+        targets = format_name_list(
+            mentioned_names
+        )
+
+        if image_count == 1:
+            return (
+                f"{author_name} "
+                f"etiquetó a {targets} "
+                "en una imagen"
+            )
+
+        return (
+            f"{author_name} "
+            f"etiquetó a {targets} "
+            f"en {image_count} imágenes"
+        )
+
+    if image_count == 1:
+        return (
+            f"{author_name} "
+            "envió una imagen"
+        )
+
+    return (
+        f"{author_name} "
+        f"envió {image_count} imágenes"
+    )
+
+
+def build_video_phrase(
+    author_name,
+    video_count,
+    mentioned_names,
+):
+    if mentioned_names:
+        targets = format_name_list(
+            mentioned_names
+        )
+
+        if video_count == 1:
+            return (
+                f"{author_name} "
+                f"etiquetó a {targets} "
+                "en un video"
+            )
+
+        return (
+            f"{author_name} "
+            f"etiquetó a {targets} "
+            f"en {video_count} videos"
+        )
+
+    if video_count == 1:
+        return (
+            f"{author_name} "
+            "envió un video"
+        )
+
+    return (
+        f"{author_name} "
+        f"envió {video_count} videos"
+    )
+
+
+# ============================================================
 # CONSTRUIR MENSAJE FINAL
+#
+# IMPORTANTE:
+#
+# ESTA FUNCIÓN NO HACE OCR.
+#
+# OCR solo se usa explícitamente mediante:
+#
+# /tts decir imagen:[archivo]
 # ============================================================
 
 async def build_spoken_message(
     message,
 ):
-    """
-    Combina:
+    author_name = (
+        get_spoken_name(
+            message.author
+        )
+    )
 
-    - Nombre del usuario.
-    - Reply.
-    - Texto normal.
-    - OCR de imágenes.
-    """
+    mentioned_names = (
+        get_mentioned_names(
+            message
+        )
+    )
+
+    image_count = (
+        count_message_images(
+            message
+        )
+    )
+
+    video_count = (
+        count_message_videos(
+            message
+        )
+    )
+
+    has_link = (
+        message_contains_url(
+            message
+        )
+    )
+
+    caption = (
+        get_media_caption(
+            message
+        )
+    )
+
+    # ========================================================
+    # IMAGEN
+    # ========================================================
+
+    if image_count > 0:
+        phrase = build_image_phrase(
+            author_name,
+            image_count,
+            mentioned_names,
+        )
+
+        if caption:
+            return (
+                f"{phrase} "
+                f"y dice: {caption}"
+            )
+
+        return phrase
+
+    # ========================================================
+    # VIDEO
+    # ========================================================
+
+    if video_count > 0:
+        phrase = build_video_phrase(
+            author_name,
+            video_count,
+            mentioned_names,
+        )
+
+        if caption:
+            return (
+                f"{phrase} "
+                f"y dice: {caption}"
+            )
+
+        return phrase
+
+    # ========================================================
+    # ENLACE
+    # ========================================================
+
+    if has_link:
+        phrase = (
+            f"{author_name} "
+            "envió un enlace"
+        )
+
+        if caption:
+            return (
+                f"{phrase} "
+                f"y dice: {caption}"
+            )
+
+        return phrase
+
+    # ========================================================
+    # TEXTO NORMAL
+    # ========================================================
 
     normal_text = (
         clean_message_text(
             message
-        )
-    )
-
-    # OCR solo se ejecuta aquí.
-    #
-    # Como build_spoken_message solamente se llama
-    # para usuarios con /tts iniciar activo,
-    # las imágenes de usuarios inactivos no gastan
-    # procesamiento.
-    ocr_results = (
-        await get_message_ocr_text(
-            message
-        )
-    )
-
-    content_parts = []
-
-    if normal_text:
-        content_parts.append(
-            normal_text
-        )
-
-    for ocr_text in ocr_results:
-        content_parts.append(
-            "Texto de la imagen: "
-            f"{ocr_text}"
-        )
-
-    # GIF solo, emoji solo, o imagen sin
-    # texto detectable.
-    if not content_parts:
-        return None
-
-    content = ". ".join(
-        content_parts
-    )
-
-    author_name = (
-        get_spoken_name(
-            message.author
         )
     )
 
@@ -556,26 +1059,31 @@ async def build_spoken_message(
         )
     )
 
-    parts = []
+    if not normal_text:
+        return None
+
+    # --------------------------------------------------------
+    # REPLY
+    # --------------------------------------------------------
+
+    if reply_name:
+        return (
+            f"{author_name} "
+            f"responde a {reply_name}: "
+            f"{normal_text}"
+        )
+
+    # --------------------------------------------------------
+    # MENSAJE NORMAL
+    # --------------------------------------------------------
 
     if should_announce_name(
         message.guild.id,
         message.author.id,
     ):
-        parts.append(
-            f"{author_name} dice:"
+        return (
+            f"{author_name} dice: "
+            f"{normal_text}"
         )
 
-    if reply_name:
-        parts.append(
-            "Respondiendo a "
-            f"{reply_name}:"
-        )
-
-    parts.append(
-        content
-    )
-
-    return " ".join(
-        parts
-    )
+    return normal_text

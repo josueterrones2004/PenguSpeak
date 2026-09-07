@@ -44,6 +44,14 @@ def deactivate_user(
     )
 
 
+def clear_guild_active_users(
+    guild_id,
+):
+    get_guild_active_users(
+        guild_id
+    ).clear()
+
+
 def is_user_active(
     guild_id,
     user_id,
@@ -71,6 +79,34 @@ def get_total_active_count():
         len(users)
         for users in active_users.values()
     )
+
+
+def has_active_user_in_voice(
+    guild,
+):
+    """
+    Devuelve True si al menos uno de los usuarios
+    que tiene TTS activo sigue actualmente dentro
+    de algún canal de voz.
+    """
+
+    guild_id = guild.id
+
+    for user_id in get_guild_active_users(
+        guild_id
+    ):
+        member = guild.get_member(
+            user_id
+        )
+
+        if (
+            member
+            and member.voice
+            and member.voice.channel
+        ):
+            return True
+
+    return False
 
 
 # ============================================================
@@ -165,14 +201,6 @@ guild_idle_tasks = {}
 def mark_guild_activity(
     guild_id,
 ):
-    """
-    Reinicia el contador de inactividad.
-
-    Se llama cuando entra actividad nueva,
-    por ejemplo cuando se añade un mensaje
-    a la cola.
-    """
-
     guild_last_activity[
         guild_id
     ] = time.monotonic()
@@ -182,12 +210,10 @@ def cancel_idle_disconnect(
     guild_id,
 ):
     """
-    Históricamente esta función cancelaba
-    el temporizador.
+    Actualmente esta función reinicia el contador
+    de inactividad.
 
-    Ahora simplemente reinicia la actividad.
-    El monitor permanece activo para poder
-    detectar 5 minutos reales de inactividad.
+    El monitor permanece activo.
     """
 
     mark_guild_activity(
@@ -227,8 +253,7 @@ async def idle_disconnect_worker(
                 return
 
             # ------------------------------------------------
-            # SI ESTÁ HABLANDO O HAY TRABAJO PENDIENTE,
-            # TODAVÍA NO CONSIDERAMOS AL BOT INACTIVO.
+            # TODAVÍA HAY AUDIO O MENSAJES PENDIENTES
             # ------------------------------------------------
 
             queue_busy = bool(
@@ -264,7 +289,7 @@ async def idle_disconnect_worker(
                 continue
 
             # ------------------------------------------------
-            # CALCULAR TIEMPO SIN ACTIVIDAD
+            # TIEMPO SIN ACTIVIDAD
             # ------------------------------------------------
 
             last_activity = (
@@ -301,7 +326,7 @@ async def idle_disconnect_worker(
             print(
                 f"[IDLE] Servidor {guild_id}: "
                 "5 minutos sin actividad. "
-                "Desconectando..."
+                "Desconectando de voz..."
             )
 
             guild_queues[
@@ -328,9 +353,12 @@ async def idle_disconnect_worker(
             if voice_client.is_playing():
                 voice_client.stop()
 
-            get_guild_active_users(
-                guild_id
-            ).clear()
+            # IMPORTANTE:
+            #
+            # NO borramos active_users.
+            #
+            # Los usuarios siguen teniendo TTS activo
+            # aunque PenguSpeak salga por inactividad.
 
             try:
                 await voice_client.disconnect(
@@ -343,8 +371,11 @@ async def idle_disconnect_worker(
                     f"{exc}"
                 )
 
-            await update_presence(
-                bot
+            print(
+                f"[IDLE] Servidor {guild_id}: "
+                "usuarios TTS conservados. "
+                "Se reconectará cuando vuelvan "
+                "a escribir."
             )
 
             return
@@ -373,11 +404,6 @@ def schedule_idle_disconnect(
     bot,
     guild_id,
 ):
-    """
-    Garantiza que haya un único monitor
-    de inactividad para el servidor.
-    """
-
     ensure_guild_state(
         guild_id
     )

@@ -20,6 +20,31 @@ from penguspeak.state import (
 
 
 # ============================================================
+# ARCHIVOS
+# ============================================================
+
+def remove_audio_file(
+    filepath,
+):
+    if not filepath:
+        return
+
+    try:
+        os.remove(
+            filepath
+        )
+
+    except FileNotFoundError:
+        pass
+
+    except Exception as exc:
+        print(
+            "[QUEUE] Error eliminando "
+            f"archivo temporal: {exc}"
+        )
+
+
+# ============================================================
 # AÑADIR A COLA
 # ============================================================
 
@@ -38,6 +63,14 @@ def add_to_queue(
         "user_id": user_id,
         "text": text,
         "voice_id": voice_id,
+
+        # Prefetch
+        "prefetch_task": None,
+        "prefetched_filepath": None,
+
+        # Se marca cuando /tts saltar
+        # elimina el elemento antes de reproducirlo.
+        "removed": False,
     }
 
     guild_queues[
@@ -46,8 +79,6 @@ def add_to_queue(
         item
     )
 
-    # Cada nuevo mensaje reinicia
-    # el contador de inactividad.
     mark_guild_activity(
         guild_id
     )
@@ -57,6 +88,289 @@ def add_to_queue(
     ].set()
 
     return item
+
+
+# ============================================================
+# GENERACIÓN ANTICIPADA
+# ============================================================
+
+async def generate_prefetched_audio(
+    guild_id,
+    item,
+):
+    """
+    Genera el audio de un elemento todavía en cola.
+
+    Si /tts saltar elimina el mensaje mientras se
+    está generando, el archivo se elimina cuando
+    termine la generación.
+    """
+
+    if item.get(
+        "removed",
+        False,
+    ):
+        return None
+
+    try:
+        mark_guild_activity(
+            guild_id
+        )
+
+        filepath = (
+            await create_audio_file(
+                item["text"],
+                item["voice_id"],
+            )
+        )
+
+        if not filepath:
+            return None
+
+        # El mensaje pudo ser eliminado mientras
+        # Edge TTS estaba generando el archivo.
+        if item.get(
+            "removed",
+            False,
+        ):
+            remove_audio_file(
+                filepath
+            )
+
+            return None
+
+        item[
+            "prefetched_filepath"
+        ] = filepath
+
+        print(
+            "[QUEUE] Prefetch listo: "
+            f"{item['id'][:8]}"
+        )
+
+        return filepath
+
+    except asyncio.CancelledError:
+        raise
+
+    except Exception as exc:
+        print(
+            "[QUEUE] Error en prefetch: "
+            f"{exc}"
+        )
+
+        return None
+
+
+def ensure_item_prefetch(
+    guild_id,
+    item,
+):
+    """
+    Garantiza que un mensaje tenga como máximo
+    una tarea de prefetch.
+    """
+
+    if item.get(
+        "removed",
+        False,
+    ):
+        return None
+
+    if item.get(
+        "prefetched_filepath"
+    ):
+        return None
+
+    task = item.get(
+        "prefetch_task"
+    )
+
+    if (
+        task is not None
+        and not task.done()
+    ):
+        return task
+
+    # Si una tarea anterior ya terminó pero dejó
+    # un archivo listo, no generamos de nuevo.
+    if (
+        task is not None
+        and task.done()
+        and item.get(
+            "prefetched_filepath"
+        )
+    ):
+        return task
+
+    task = asyncio.create_task(
+        generate_prefetched_audio(
+            guild_id,
+            item,
+        )
+    )
+
+    item[
+        "prefetch_task"
+    ] = task
+
+    return task
+
+
+async def watch_for_next_item(
+    guild_id,
+    queue,
+):
+    """
+    Se ejecuta mientras el mensaje actual está
+    reproduciéndose.
+
+    Si ya existe otro elemento, empieza su
+    generación inmediatamente.
+
+    Si la cola está vacía, espera a que llegue
+    uno mientras el audio actual siga sonando.
+    """
+
+    try:
+        while True:
+            if queue:
+                next_item = queue[0]
+
+                if not next_item.get(
+                    "removed",
+                    False,
+                ):
+                    ensure_item_prefetch(
+                        guild_id,
+                        next_item,
+                    )
+
+                    return
+
+            await asyncio.sleep(
+                0.1
+            )
+
+    except asyncio.CancelledError:
+        return
+
+
+# ============================================================
+# OBTENER AUDIO DEL ELEMENTO
+# ============================================================
+
+async def get_item_audio(
+    guild_id,
+    item,
+):
+    """
+    Usa el audio prefetched si ya existe.
+
+    Si todavía se está generando, espera a esa misma
+    tarea para evitar generar el mismo audio dos veces.
+
+    Si no había prefetch, lo genera normalmente.
+    """
+
+    filepath = item.get(
+        "prefetched_filepath"
+    )
+
+    if filepath:
+        item[
+            "prefetched_filepath"
+        ] = None
+
+        return filepath
+
+    task = item.get(
+        "prefetch_task"
+    )
+
+    if task is not None:
+        try:
+            filepath = await task
+
+        except asyncio.CancelledError:
+            raise
+
+        except Exception as exc:
+            print(
+                "[QUEUE] Error esperando "
+                f"prefetch: {exc}"
+            )
+
+            filepath = None
+
+        item[
+            "prefetch_task"
+        ] = None
+
+        # generate_prefetched_audio también guarda
+        # la ruta dentro del item.
+        prefetched = item.get(
+            "prefetched_filepath"
+        )
+
+        if prefetched:
+            item[
+                "prefetched_filepath"
+            ] = None
+
+            return prefetched
+
+        if filepath:
+            return filepath
+
+    # No existía ningún prefetch.
+    mark_guild_activity(
+        guild_id
+    )
+
+    return await create_audio_file(
+        item["text"],
+        item["voice_id"],
+    )
+
+
+# ============================================================
+# LIMPIAR PREFETCH DE UN ELEMENTO
+# ============================================================
+
+async def cleanup_item_prefetch(
+    item,
+):
+    item[
+        "removed"
+    ] = True
+
+    task = item.get(
+        "prefetch_task"
+    )
+
+    if (
+        task is not None
+        and not task.done()
+    ):
+        # No cancelamos Edge TTS a mitad de generación.
+        #
+        # generate_prefetched_audio verá "removed"
+        # al terminar y eliminará su archivo.
+        return
+
+    filepath = item.get(
+        "prefetched_filepath"
+    )
+
+    if filepath:
+        remove_audio_file(
+            filepath
+        )
+
+        item[
+            "prefetched_filepath"
+        ] = None
 
 
 # ============================================================
@@ -78,10 +392,34 @@ def remove_next_user_item(
     for index, item in enumerate(
         queue
     ):
-        if item["user_id"] == user_id:
-            return queue.pop(
+        if (
+            item["user_id"]
+            == user_id
+        ):
+            removed = queue.pop(
                 index
             )
+
+            removed[
+                "removed"
+            ] = True
+
+            # Si el archivo ya estaba generado,
+            # podemos borrarlo inmediatamente.
+            filepath = removed.get(
+                "prefetched_filepath"
+            )
+
+            if filepath:
+                remove_audio_file(
+                    filepath
+                )
+
+                removed[
+                    "prefetched_filepath"
+                ] = None
+
+            return removed
 
     return None
 
@@ -129,15 +467,26 @@ async def guild_queue_worker(
             ] = item
 
             filepath = None
+            prefetch_watcher = None
 
             try:
                 # --------------------------------------------
-                # CANCELADO ANTES DE GENERAR
+                # CANCELADO ANTES DE REPRODUCIR
                 # --------------------------------------------
 
-                if item_id in cancelled:
+                if (
+                    item_id in cancelled
+                    or item.get(
+                        "removed",
+                        False,
+                    )
+                ):
                     cancelled.discard(
                         item_id
+                    )
+
+                    await cleanup_item_prefetch(
+                        item
                     )
 
                     continue
@@ -147,6 +496,10 @@ async def guild_queue_worker(
                 )
 
                 if guild is None:
+                    await cleanup_item_prefetch(
+                        item
+                    )
+
                     continue
 
                 voice_client = (
@@ -157,22 +510,29 @@ async def guild_queue_worker(
                     voice_client is None
                     or not voice_client.is_connected()
                 ):
+                    await cleanup_item_prefetch(
+                        item
+                    )
+
                     continue
 
-                # Mientras haya trabajo,
-                # el bot sigue considerándose activo.
                 mark_guild_activity(
                     guild_id
                 )
 
                 # --------------------------------------------
-                # GENERAR AUDIO
+                # OBTENER AUDIO
+                #
+                # Puede estar:
+                # - ya generado
+                # - generándose
+                # - sin empezar todavía
                 # --------------------------------------------
 
                 filepath = (
-                    await create_audio_file(
-                        item["text"],
-                        item["voice_id"],
+                    await get_item_audio(
+                        guild_id,
+                        item,
                     )
                 )
 
@@ -188,17 +548,29 @@ async def guild_queue_worker(
                         item_id
                     )
 
-                    try:
-                        os.remove(
-                            filepath
-                        )
-
-                    except FileNotFoundError:
-                        pass
+                    remove_audio_file(
+                        filepath
+                    )
 
                     filepath = None
 
                     continue
+
+                # --------------------------------------------
+                # PREFETCH DEL SIGUIENTE
+                #
+                # Este watcher vive mientras el audio actual
+                # se está reproduciendo.
+                # --------------------------------------------
+
+                prefetch_watcher = (
+                    asyncio.create_task(
+                        watch_for_next_item(
+                            guild_id,
+                            queue,
+                        )
+                    )
+                )
 
                 # --------------------------------------------
                 # REPRODUCIR
@@ -231,14 +603,20 @@ async def guild_queue_worker(
                 )
 
             finally:
-                if filepath:
-                    try:
-                        os.remove(
-                            filepath
-                        )
+                if prefetch_watcher:
+                    if not prefetch_watcher.done():
+                        prefetch_watcher.cancel()
 
-                    except FileNotFoundError:
+                    try:
+                        await prefetch_watcher
+
+                    except asyncio.CancelledError:
                         pass
+
+                if filepath:
+                    remove_audio_file(
+                        filepath
+                    )
 
                 guild_current_items[
                     guild_id
@@ -250,8 +628,8 @@ async def guild_queue_worker(
 
         event.clear()
 
-        # Por si se añadió un elemento justo
-        # entre el último chequeo y clear().
+        # Por si entró algo justo entre el último
+        # chequeo de la cola y event.clear().
         if queue:
             event.set()
 
@@ -285,8 +663,6 @@ def ensure_guild_worker(
             )
         )
 
-    # El monitor de 5 minutos se crea
-    # al mismo tiempo que el worker.
     schedule_idle_disconnect(
         bot,
         guild_id,
