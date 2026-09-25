@@ -49,11 +49,15 @@ PenguSpeak:
 
 ## 📋 Requisitos
 
+```text
 Python
+```
 
 Se recomienda:
 
+```text
 Python 3.12+
+```
 
 PenguSpeak también ha sido probado con Python 3.13.
 
@@ -61,6 +65,7 @@ PenguSpeak también ha sido probado con Python 3.13.
 
 PenguSpeak necesita:
 
+```text
 FFmpeg
 Tesseract OCR
 Datos de idioma español para Tesseract
@@ -69,6 +74,7 @@ sudo pacman -S ffmpeg tesseract tesseract-data-spa
 Debian / Ubuntu
 sudo apt update
 sudo apt install ffmpeg tesseract-ocr tesseract-ocr-spa
+```
 
 Tesseract solamente se utiliza para el OCR de imágenes enviado explícitamente mediante /tts decir.
 
@@ -76,10 +82,13 @@ Tesseract solamente se utiliza para el OCR de imágenes enviado explícitamente 
 
 Las dependencias del proyecto se encuentran en:
 
+```text
 requirements.txt
+```
 
 Actualmente incluyen:
 
+```text
 discord.py[voice]==2.7.1
 davey==0.1.6
 edge-tts==7.2.8
@@ -87,6 +96,7 @@ python-dotenv==1.2.3
 Pillow==12.3.0
 pytesseract==0.3.13
 emoji>=2.14,<3
+```
 
 ## 🚀 Instalación
 
