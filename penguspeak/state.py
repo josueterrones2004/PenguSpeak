@@ -319,6 +319,27 @@ async def idle_disconnect_worker(
 
                 continue
 
+                        # ------------------------------------------------
+            # MANTENER CONEXIÓN PARA BAJA LATENCIA
+            #
+            # Si todavía existe al menos un usuario con TTS
+            # activo dentro de voz, mantenemos al bot
+            # conectado aunque lleve tiempo sin hablar.
+            # ------------------------------------------------
+
+            if has_active_user_in_voice(
+                guild
+            ):
+                mark_guild_activity(
+                    guild_id
+                )
+
+                await asyncio.sleep(
+                    5
+                )
+
+                continue
+
             # ------------------------------------------------
             # 5 MINUTOS SIN ACTIVIDAD
             # ------------------------------------------------

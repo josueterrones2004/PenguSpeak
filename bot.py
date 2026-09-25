@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import signal
+import time
 
 import discord
 from discord import app_commands
@@ -24,6 +25,7 @@ from penguspeak.ocr import (
 from penguspeak.queue import (
     add_to_queue,
     ensure_guild_worker,
+    remove_all_user_items,
     remove_next_user_item,
 )
 
@@ -411,8 +413,6 @@ async def on_voice_state_update(
 
     # --------------------------------------------------------
     # TODAVÍA HAY ALGÚN USUARIO TTS EN VOZ
-    #
-    # Conservamos la sesión.
     # --------------------------------------------------------
 
     if guild_has_active_user_in_voice(
@@ -422,8 +422,6 @@ async def on_voice_state_update(
 
     # --------------------------------------------------------
     # EL ÚLTIMO USUARIO TTS SALIÓ DE VOZ
-    #
-    # Aquí sí termina realmente la sesión.
     # --------------------------------------------------------
 
     get_guild_active_users(
@@ -472,6 +470,10 @@ async def on_voice_state_update(
 async def on_message(
     message,
 ):
+    # Momento exacto en el que discord.py nos entrega
+    # el mensaje.
+    received_at = time.perf_counter()
+
     if message.author.bot:
         return
 
@@ -491,7 +493,7 @@ async def on_message(
     )
 
     # --------------------------------------------------------
-    # SOLO /tts iniciar
+    # SOLO USUARIOS CON /tts iniciar
     # --------------------------------------------------------
 
     if not is_user_active(
@@ -526,9 +528,6 @@ async def on_message(
 
     # --------------------------------------------------------
     # RECONEXIÓN AUTOMÁTICA
-    #
-    # Si salió por inactividad, el usuario sigue
-    # teniendo TTS activo.
     # --------------------------------------------------------
 
     if (
@@ -568,9 +567,6 @@ async def on_message(
 
     # --------------------------------------------------------
     # ESTÁ EN OTRO CANAL
-    #
-    # No movemos al bot automáticamente porque puede
-    # estar atendiendo usuarios del canal actual.
     # --------------------------------------------------------
 
     if (
@@ -590,18 +586,20 @@ async def on_message(
 
     # --------------------------------------------------------
     # CONSTRUIR MENSAJE
-    #
-    # IMPORTANTE:
-    # build_spoken_message() ya NO debe hacer OCR.
-    #
-    # Imagen normal:
-    # "X envió una imagen"
     # --------------------------------------------------------
 
     text = (
         await build_spoken_message(
             message
         )
+    )
+
+    processed_at = time.perf_counter()
+
+    print(
+        "[TTS PERF] "
+        "Discord -> texto listo: "
+        f"{(processed_at - received_at) * 1000:.0f} ms"
     )
 
     if not text:
@@ -612,11 +610,27 @@ async def on_message(
         VOICES,
     )
 
+    # --------------------------------------------------------
+    # AÑADIR A COLA
+    #
+    # Pasamos received_at para que audio.py mida todo desde
+    # el momento en que Discord entregó el mensaje.
+    # --------------------------------------------------------
+
     add_to_queue(
         guild_id=guild_id,
         user_id=user_id,
         text=text,
         voice_id=voice_id,
+        started_at=received_at,
+    )
+
+    queued_at = time.perf_counter()
+
+    print(
+        "[TTS PERF] "
+        "Discord -> cola: "
+        f"{(queued_at - received_at) * 1000:.0f} ms"
     )
 
     print(
@@ -749,6 +763,12 @@ async def tts_detener(
 
         return
 
+    # Respondemos a Discord inmediatamente para evitar
+    # "La aplicación no ha respondido".
+    await interaction.response.defer(
+        ephemeral=True
+    )
+
     guild_id = (
         interaction.guild.id
     )
@@ -761,17 +781,64 @@ async def tts_detener(
         guild_id,
         user_id,
     ):
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "No tienes el TTS activado.",
             ephemeral=True,
         )
 
         return
 
+    # Deja de aceptar futuros mensajes automáticos.
     deactivate_user(
         guild_id,
         user_id,
     )
+
+    # Elimina TODOS sus mensajes que todavía estén
+    # esperando en la cola.
+    removed_count = (
+        remove_all_user_items(
+            guild_id,
+            user_id,
+        )
+    )
+
+    # --------------------------------------------------------
+    # DETENER MENSAJE ACTUAL
+    # --------------------------------------------------------
+
+    current = (
+        guild_current_items.get(
+            guild_id
+        )
+    )
+
+    voice_client = (
+        interaction.guild.voice_client
+    )
+
+    stopped_current = False
+
+    if (
+        current is not None
+        and current.get(
+            "user_id"
+        )
+        == user_id
+    ):
+        guild_cancelled_items[
+            guild_id
+        ].add(
+            current["id"]
+        )
+
+        if (
+            voice_client
+            and voice_client.is_playing()
+        ):
+            voice_client.stop()
+
+            stopped_current = True
 
     await update_presence(
         bot
@@ -788,22 +855,22 @@ async def tts_detener(
             guild_id,
         )
 
-    await interaction.response.send_message(
-        "⏹ TTS desactivado.",
+    print(
+        "[TTS] Usuario detenido: "
+        f"{user_id} | "
+        f"actual={stopped_current} | "
+        f"cola_eliminada={removed_count}"
+    )
+
+    await interaction.followup.send(
+        "⏹ TTS desactivado y "
+        "tus mensajes pendientes fueron detenidos.",
         ephemeral=True,
     )
 
 
 # ============================================================
 # /tts decir
-#
-# texto e imagen son opcionales.
-#
-# - texto
-# - imagen
-# - texto + imagen
-#
-# El OCR SOLO se ejecuta aquí.
 # ============================================================
 
 @tts_group.command(
@@ -826,12 +893,11 @@ async def tts_decir(
     texto: str | None = None,
     imagen: discord.Attachment | None = None,
 ):
-    # /tts decir es PÚBLICO.
-    await interaction.response.defer()
+    command_started_at = (
+        time.perf_counter()
+    )
 
-    # --------------------------------------------------------
-    # SERVIDOR
-    # --------------------------------------------------------
+    await interaction.response.defer()
 
     if not interaction.guild:
         await interaction.followup.send(
@@ -840,10 +906,6 @@ async def tts_decir(
         )
 
         return
-
-    # --------------------------------------------------------
-    # VALIDAR PARÁMETROS
-    # --------------------------------------------------------
 
     if texto:
         texto = normalize_spaces(
@@ -906,12 +968,6 @@ async def tts_decir(
 
         return
 
-    # --------------------------------------------------------
-    # NOMBRE PÚBLICO
-    #
-    # Esto corrige el NameError que te salió.
-    # --------------------------------------------------------
-
     display_name = (
         interaction.user.display_name
         if isinstance(
@@ -920,10 +976,6 @@ async def tts_decir(
         )
         else interaction.user.name
     )
-
-    # --------------------------------------------------------
-    # CONSTRUIR TEXTO PARA TTS
-    # --------------------------------------------------------
 
     spoken_parts = []
 
@@ -936,8 +988,6 @@ async def tts_decir(
 
     # --------------------------------------------------------
     # OCR
-    #
-    # SOLO existe aquí.
     # --------------------------------------------------------
 
     if imagen is not None:
@@ -972,12 +1022,6 @@ async def tts_decir(
             spoken_parts
         )
     )
-
-    # --------------------------------------------------------
-    # SI LA IMAGEN NO TENÍA TEXTO
-    #
-    # Igual mostramos la imagen en Discord.
-    # --------------------------------------------------------
 
     if not final_text:
         if imagen is not None:
@@ -1041,6 +1085,7 @@ async def tts_decir(
         user_id=user_id,
         text=final_text,
         voice_id=voice_id,
+        started_at=command_started_at,
     )
 
     if (
@@ -1056,11 +1101,6 @@ async def tts_decir(
 
     # --------------------------------------------------------
     # RESPUESTA PÚBLICA
-    #
-    # MUY IMPORTANTE:
-    #
-    # El OCR NO se muestra.
-    # Si hubo imagen, mostramos LA IMAGEN ORIGINAL.
     # --------------------------------------------------------
 
     if imagen is not None:
@@ -1093,19 +1133,12 @@ async def tts_decir(
                 f"{exc}"
             )
 
-            # Si por algún motivo Discord no puede
-            # volver a descargar la imagen, al menos
-            # cerramos correctamente la interacción.
             await interaction.followup.send(
                 f"**{display_name}:** "
                 "🖼️ imagen procesada"
             )
 
         return
-
-    # --------------------------------------------------------
-    # SOLO TEXTO
-    # --------------------------------------------------------
 
     await interaction.followup.send(
         f"**{display_name}:** "
@@ -1136,6 +1169,11 @@ async def tts_saltar(
 
         return
 
+    # ACK inmediato a Discord.
+    await interaction.response.defer(
+        ephemeral=True
+    )
+
     guild_id = (
         interaction.guild.id
     )
@@ -1159,9 +1197,7 @@ async def tts_saltar(
     )
 
     # --------------------------------------------------------
-    # MENSAJE ACTUAL
-    #
-    # Solo puedes parar el tuyo.
+    # ACTUAL
     # --------------------------------------------------------
 
     if (
@@ -1183,7 +1219,7 @@ async def tts_saltar(
         ):
             voice_client.stop()
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "⏭ Saltaste tu mensaje actual.",
             ephemeral=True,
         )
@@ -1191,7 +1227,7 @@ async def tts_saltar(
         return
 
     # --------------------------------------------------------
-    # PRÓXIMO MENSAJE EN COLA DEL USUARIO
+    # SIGUIENTE EN COLA
     # --------------------------------------------------------
 
     removed = (
@@ -1202,7 +1238,7 @@ async def tts_saltar(
     )
 
     if removed:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "⏭ Saltaste tu próximo "
             "mensaje en cola.",
             ephemeral=True,
@@ -1210,7 +1246,7 @@ async def tts_saltar(
 
         return
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         "No tienes ningún mensaje "
         "que pueda saltar.",
         ephemeral=True,
@@ -1258,18 +1294,7 @@ async def send_voice_browser(
     interaction,
     gender,
 ):
-    """
-    Intenta usar VoiceBrowserView sin acoplar bot.py
-    demasiado a la firma exacta de views.py.
-
-    Esto permite conservar tu views.py separado.
-    """
-
     view = None
-
-    # --------------------------------------------------------
-    # PRIMERO: inspeccionar parámetros conocidos.
-    # --------------------------------------------------------
 
     try:
         signature = inspect.signature(
@@ -1307,10 +1332,6 @@ async def send_voice_browser(
     except Exception:
         view = None
 
-    # --------------------------------------------------------
-    # FALLBACKS
-    # --------------------------------------------------------
-
     if view is None:
         attempts = (
             (
@@ -1347,11 +1368,6 @@ async def send_voice_browser(
 
         return
 
-    # --------------------------------------------------------
-    # Si views.py tiene su propio método de envío inicial,
-    # usamos ese.
-    # --------------------------------------------------------
-
     for method_name in (
         "send_initial_message",
         "send_initial",
@@ -1381,10 +1397,6 @@ async def send_voice_browser(
 
             except TypeError:
                 pass
-
-    # --------------------------------------------------------
-    # FALLBACK ESTÁNDAR
-    # --------------------------------------------------------
 
     title = (
         "Voces masculinas"
