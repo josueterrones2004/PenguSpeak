@@ -386,34 +386,46 @@ tmux
 
 El repositorio puede mantenerse sincronizado con GitHub:
 
+```text
 git pull
 pip install -r requirements.txt
+```
 
 Luego puede ejecutarse dentro del entorno virtual:
 
+```text
 source .venv/bin/activate
 python bot.py
 Ejecución con tmux
+```
 
 Ejemplo:
 
+```text
 tmux new-session -s penguspeak
+```
 
 Dentro de la sesión:
 
+```text
 proot-distro login debian
 cd ~/PenguSpeak
 source .venv/bin/activate
 python bot.py
+```
 
 Para salir de la sesión sin cerrar el bot:
 
+```text
 Ctrl+B
 D
+```
 
 Para volver a entrar:
 
+```text
 tmux attach -t penguspeak
+```
 
 ## 📁 Estructura del proyecto
 
@@ -447,7 +459,9 @@ PenguSpeak/
 
 El token de Discord debe almacenarse únicamente en:
 
+```text
 .env
+```
 
 El archivo .env debe estar excluido mediante .gitignore.
 
@@ -469,15 +483,21 @@ Si no aparece ningún error, puedes iniciar el bot normalmente.
 
 En una instalación existente:
 
+```text
 git pull
+```
 
 Después actualiza las dependencias:
 
+```text
 pip install -r requirements.txt
+```
 
 Y vuelve a iniciar:
 
+```text
 python bot.py
+```
 
 ## 📦 Versión
 
