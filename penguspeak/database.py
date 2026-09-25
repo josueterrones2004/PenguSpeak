@@ -4,8 +4,22 @@ DB_PATH = "penguspeak.db"
 DEFAULT_VOICE = "edge_jorge"
 
 
+# ============================================================
+# CACHÉ EN RAM
+# ============================================================
+
+voice_cache = {}
+nickname_cache = {}
+
+
+# ============================================================
+# INICIALIZACIÓN
+# ============================================================
+
 def init_database():
-    with sqlite3.connect(DB_PATH) as connection:
+    with sqlite3.connect(
+        DB_PATH
+    ) as connection:
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS users (
@@ -16,24 +30,52 @@ def init_database():
             """
         )
 
+        rows = connection.execute(
+            """
+            SELECT
+                user_id,
+                voice_id,
+                nickname
+            FROM users
+            """
+        ).fetchall()
+
         connection.commit()
 
+    voice_cache.clear()
+    nickname_cache.clear()
 
-def get_user_voice(user_id, valid_voices):
-    with sqlite3.connect(DB_PATH) as connection:
-        row = connection.execute(
-            """
-            SELECT voice_id
-            FROM users
-            WHERE user_id = ?
-            """,
-            (user_id,),
-        ).fetchone()
+    for (
+        user_id,
+        voice_id,
+        nickname,
+    ) in rows:
+        voice_cache[
+            user_id
+        ] = voice_id
 
-    if not row:
-        return DEFAULT_VOICE
+        nickname_cache[
+            user_id
+        ] = nickname
 
-    voice_id = row[0]
+    print(
+        "[DB] Caché cargada: "
+        f"{len(rows)} usuarios"
+    )
+
+
+# ============================================================
+# OBTENER VOZ
+# ============================================================
+
+def get_user_voice(
+    user_id,
+    valid_voices,
+):
+    voice_id = voice_cache.get(
+        user_id,
+        DEFAULT_VOICE,
+    )
 
     if voice_id not in valid_voices:
         return DEFAULT_VOICE
@@ -41,8 +83,17 @@ def get_user_voice(user_id, valid_voices):
     return voice_id
 
 
-def set_user_voice(user_id, voice_id):
-    with sqlite3.connect(DB_PATH) as connection:
+# ============================================================
+# CAMBIAR VOZ
+# ============================================================
+
+def set_user_voice(
+    user_id,
+    voice_id,
+):
+    with sqlite3.connect(
+        DB_PATH
+    ) as connection:
         connection.execute(
             """
             INSERT INTO users (
@@ -63,26 +114,39 @@ def set_user_voice(user_id, voice_id):
 
         connection.commit()
 
+    voice_cache[
+        user_id
+    ] = voice_id
 
-def get_nickname(user_id):
-    with sqlite3.connect(DB_PATH) as connection:
-        row = connection.execute(
-            """
-            SELECT nickname
-            FROM users
-            WHERE user_id = ?
-            """,
-            (user_id,),
-        ).fetchone()
-
-    if not row:
-        return None
-
-    return row[0]
+    nickname_cache.setdefault(
+        user_id,
+        None,
+    )
 
 
-def set_nickname(user_id, nickname):
-    with sqlite3.connect(DB_PATH) as connection:
+# ============================================================
+# OBTENER APODO
+# ============================================================
+
+def get_nickname(
+    user_id,
+):
+    return nickname_cache.get(
+        user_id
+    )
+
+
+# ============================================================
+# CAMBIAR APODO
+# ============================================================
+
+def set_nickname(
+    user_id,
+    nickname,
+):
+    with sqlite3.connect(
+        DB_PATH
+    ) as connection:
         connection.execute(
             """
             INSERT INTO users (
@@ -103,16 +167,39 @@ def set_nickname(user_id, nickname):
 
         connection.commit()
 
+    nickname_cache[
+        user_id
+    ] = nickname
 
-def remove_nickname(user_id):
-    with sqlite3.connect(DB_PATH) as connection:
+    voice_cache.setdefault(
+        user_id,
+        DEFAULT_VOICE,
+    )
+
+
+# ============================================================
+# QUITAR APODO
+# ============================================================
+
+def remove_nickname(
+    user_id,
+):
+    with sqlite3.connect(
+        DB_PATH
+    ) as connection:
         connection.execute(
             """
             UPDATE users
             SET nickname = NULL
             WHERE user_id = ?
             """,
-            (user_id,),
+            (
+                user_id,
+            ),
         )
 
         connection.commit()
+
+    nickname_cache[
+        user_id
+    ] = None

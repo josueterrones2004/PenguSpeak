@@ -821,6 +821,14 @@ def get_media_caption(
 async def get_reply_target_name(
     message,
 ):
+    """
+    Obtiene el autor del mensaje respondido solo si
+    Discord ya nos entregó el mensaje original.
+
+    No usamos fetch_message() porque metería una
+    petición HTTP en el camino crítico del TTS.
+    """
+
     if not message.reference:
         return None
 
@@ -836,31 +844,7 @@ async def get_reply_target_name(
             resolved.author
         )
 
-    message_id = (
-        message.reference.message_id
-    )
-
-    if not message_id:
-        return None
-
-    try:
-        replied_message = (
-            await message.channel.fetch_message(
-                message_id
-            )
-        )
-
-        return get_spoken_name(
-            replied_message.author
-        )
-
-    except (
-        discord.NotFound,
-        discord.Forbidden,
-        discord.HTTPException,
-    ):
-        return None
-
+    return None
 
 # ============================================================
 # FRASES DE MULTIMEDIA
