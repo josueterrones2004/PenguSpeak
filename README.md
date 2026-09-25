@@ -4,7 +4,7 @@
 
 Convierte los mensajes de texto de Discord en voz dentro de un canal de voz, con voces en español, colas de reproducción, reconocimiento de imágenes mediante OCR y soporte para contenido como emojis, enlaces, imágenes, videos, menciones y stickers.
 
-> Versión actual: **1.0.0**
+> Versión actual: **1.1.0**
 
 ---
 
