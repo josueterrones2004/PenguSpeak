@@ -457,9 +457,11 @@ Nunca publiques tu token de Discord ni lo incluyas directamente en el código.
 
 Antes de ejecutar una nueva versión puedes comprobar errores de sintaxis con:
 
+```
 python -m py_compile \
     bot.py \
     penguspeak/*.py
+```
 
 Si no aparece ningún error, puedes iniciar el bot normalmente.
 
