@@ -102,34 +102,48 @@ emoji>=2.14,<3
 
 Clona el repositorio:
 
+```text
 git clone https://github.com/josueteronnes2004/PenguSpeak.git
 cd PenguSpeak
+```
 
 Crea un entorno virtual:
 
+```text
 python -m venv .venv
+```
 
 Actívalo:
 
+```text
 source .venv/bin/activate
+```
 
 Instala las dependencias:
 
+```text
 pip install -r requirements.txt
+```
 
 También puedes utilizar uv:
 
+```text
 uv pip install -r requirements.txt --python .venv/bin/python
+```
 
 ## 🔐 Configuración
 
 Copia el archivo de ejemplo:
 
+```text
 cp .env.example .env
+```
 
 Abre .env y coloca el token de tu bot:
 
+```text
 DISCORD_TOKEN=TU_TOKEN_AQUI
+```
 
 Nunca publiques tu archivo .env ni el token del bot.
 
@@ -155,11 +169,15 @@ Los slash commands se sincronizan automáticamente al iniciar.
 
 Con el entorno virtual activado:
 
+```text
 python bot.py
+```
 
 O directamente:
 
+```text
 .venv/bin/python bot.py
+```
 
 Al iniciar correctamente deberías ver algo similar a:
 
