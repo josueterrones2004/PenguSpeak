@@ -47,7 +47,8 @@ PenguSpeak:
 "Yarin envió una imagen y dice: mira esto"
 ```
 
-📋 Requisitos
+## 📋 Requisitos
+
 Python
 
 Se recomienda:
@@ -56,7 +57,7 @@ Python 3.12+
 
 PenguSpeak también ha sido probado con Python 3.13.
 
-Dependencias del sistema
+## Dependencias del sistema
 
 PenguSpeak necesita:
 
@@ -71,7 +72,7 @@ sudo apt install ffmpeg tesseract-ocr tesseract-ocr-spa
 
 Tesseract solamente se utiliza para el OCR de imágenes enviado explícitamente mediante /tts decir.
 
-📦 Dependencias de Python
+## 📦 Dependencias de Python
 
 Las dependencias del proyecto se encuentran en:
 
@@ -86,7 +87,8 @@ python-dotenv==1.2.3
 Pillow==12.3.0
 pytesseract==0.3.13
 emoji>=2.14,<3
-🚀 Instalación
+
+## 🚀 Instalación
 
 Clona el repositorio:
 
@@ -108,7 +110,8 @@ pip install -r requirements.txt
 También puedes utilizar uv:
 
 uv pip install -r requirements.txt --python .venv/bin/python
-🔐 Configuración
+
+## 🔐 Configuración
 
 Copia el archivo de ejemplo:
 
@@ -120,7 +123,7 @@ DISCORD_TOKEN=TU_TOKEN_AQUI
 
 Nunca publiques tu archivo .env ni el token del bot.
 
-🤖 Configuración del bot en Discord
+## 🤖 Configuración del bot en Discord
 
 PenguSpeak necesita acceso a los intents necesarios para leer mensajes y gestionar estados de voz.
 
@@ -138,7 +141,7 @@ Hablar
 
 Los slash commands se sincronizan automáticamente al iniciar.
 
-▶️ Ejecutar PenguSpeak
+## ▶️ Ejecutar PenguSpeak
 
 Con el entorno virtual activado:
 
@@ -152,19 +155,19 @@ Al iniciar correctamente deberías ver algo similar a:
 
 PenguSpeak conectado como PenguSpeak
 4 grupos de comandos sincronizados.
-🎙️ Comandos
+
+## 🎙️ Comandos
+
 /tts iniciar
 
 Activa el TTS continuo para el usuario.
 
 Mientras esté activado, los mensajes escritos por ese usuario serán enviados a la cola de voz.
 
-/tts iniciar
 /tts detener
 
 Desactiva el TTS continuo.
 
-/tts detener
 /tts decir
 
 Reproduce un mensaje manualmente sin necesidad de activar el TTS continuo.
@@ -177,6 +180,7 @@ texto + imagen
 
 Ejemplo:
 
+```text
 /tts decir texto: Hola a todos
 
 Si se proporciona una imagen, PenguSpeak utiliza OCR para detectar y leer texto dentro de ella.
@@ -190,8 +194,10 @@ Las imágenes enviadas normalmente con /tts iniciar no utilizan OCR.
 Permite al usuario saltar su propio mensaje actual o eliminar su siguiente mensaje de la cola.
 
 No permite saltar los mensajes de otros usuarios.
+```
 
-🗣️ Voces
+## 🗣️ Voces
+
 /voz actual
 
 Muestra la voz actualmente seleccionada por el usuario.
@@ -209,7 +215,8 @@ Cada usuario puede elegir su propia voz.
 La voz predeterminada es:
 
 Jorge
-🏷️ Apodos
+
+## 🏷️ Apodos
 
 PenguSpeak permite establecer un nombre personalizado para ser leído por el TTS.
 
@@ -217,6 +224,7 @@ PenguSpeak permite establecer un nombre personalizado para ser leído por el TTS
 
 Ejemplo:
 
+```text
 /apodo poner apodo: Yarin
 /apodo quitar
 
@@ -225,6 +233,7 @@ Elimina el apodo configurado.
 /apodo actual
 
 Muestra el apodo actual.
+```
 
 Los apodos pueden contener:
 
@@ -234,7 +243,7 @@ espacios
 
 Los emojis y símbolos especiales no están permitidos en los apodos.
 
-🖼️ Imágenes, videos y enlaces
+## 🖼️ Imágenes, videos y enlaces
 
 Cuando el TTS continuo está activado, PenguSpeak reconoce contenido multimedia.
 
@@ -250,7 +259,8 @@ Enlace
 Yarin envió un enlace
 Enlace con texto
 Yarin envió un enlace y dice: mira esto
-🔎 OCR
+
+## 🔎 OCR
 
 PenguSpeak utiliza Tesseract OCR para leer texto dentro de imágenes.
 
@@ -276,52 +286,58 @@ Mejor resultado
 
 Esto evita ejecutar todas las variantes cuando una imagen sencilla ya puede reconocerse correctamente.
 
-😄 Emojis
+## 😄 Emojis
 
 PenguSpeak puede convertir emojis Unicode a nombres hablados en español.
 
 Ejemplo:
 
+```text
 😂
 
 se convierte en una descripción hablada equivalente.
 
 También reconoce emojis personalizados de Discord.
+```
 
 Ejemplo:
 
+```text
 <:penguDance:123456789>
 
 puede convertirse en:
 
 pengu Dance
+```
 
-Existe además un pequeño easter egg:
-
-👀
-
-se lee como:
-
-ojitos void
-🏷️ Menciones
+## 🏷️ Menciones
 
 PenguSpeak puede reconocer menciones de usuarios dentro de mensajes.
 
 Ejemplo:
 
+```text
 @Yarin mira esto + imagen
+```
 
 puede leerse como:
 
+```text
 Josué etiquetó a Yarin en una imagen y dice: mira esto
-🎟️ Stickers
+```
+
+
+## 🎟️ Stickers
 
 Los stickers de Discord también pueden ser reconocidos por nombre.
 
 Ejemplo:
 
+```text
 sticker Gato feliz
-⚡ Cola y prefetch
+```
+
+## ⚡ Cola y prefetch
 
 Cada servidor utiliza su propia cola de reproducción.
 
@@ -331,7 +347,7 @@ Esto reduce el tiempo entre mensajes consecutivos.
 
 Cada mensaje sigue tratándose como una unidad independiente dentro de la cola.
 
-⏭️ Sistema de salto
+## ⏭️ Sistema de salto
 
 Cada usuario puede saltar únicamente sus propios mensajes.
 
@@ -341,7 +357,7 @@ Si no, PenguSpeak busca el siguiente mensaje de ese mismo usuario dentro de la c
 
 Los mensajes de otros usuarios no se eliminan.
 
-💤 Inactividad
+## 💤 Inactividad
 
 Si no hay actividad durante varios minutos, PenguSpeak se desconecta automáticamente del canal de voz.
 
@@ -349,7 +365,7 @@ Los usuarios que todavía tengan /tts iniciar activo mantienen su sesión.
 
 Cuando uno de ellos vuelve a escribir desde un canal de voz válido, PenguSpeak puede reconectarse automáticamente y leer ese mismo mensaje.
 
-🔇 Estado de voz
+## 🔇 Estado de voz
 
 PenguSpeak se conecta utilizando:
 
@@ -359,7 +375,7 @@ De esta forma, el bot no necesita escuchar el audio del canal de voz.
 
 También intenta conservar este estado al cambiar de canal.
 
-📱 Android / Termux
+## 📱 Android / Termux
 
 PenguSpeak también puede ejecutarse permanentemente desde un teléfono Android utilizando:
 
@@ -398,7 +414,9 @@ D
 Para volver a entrar:
 
 tmux attach -t penguspeak
-📁 Estructura del proyecto
+
+## 📁 Estructura del proyecto
+
 PenguSpeak/
 ├── bot.py
 ├── config.py
@@ -421,7 +439,8 @@ PenguSpeak/
     ├── text.py
     ├── views.py
     └── voices.py
-🔒 Seguridad
+    
+## 🔒 Seguridad
 
 El token de Discord debe almacenarse únicamente en:
 
@@ -431,7 +450,7 @@ El archivo .env debe estar excluido mediante .gitignore.
 
 Nunca publiques tu token de Discord ni lo incluyas directamente en el código.
 
-🧪 Comprobación rápida
+## 🧪 Comprobación rápida
 
 Antes de ejecutar una nueva versión puedes comprobar errores de sintaxis con:
 
@@ -441,7 +460,7 @@ python -m py_compile \
 
 Si no aparece ningún error, puedes iniciar el bot normalmente.
 
-🔄 Actualizar PenguSpeak
+## 🔄 Actualizar PenguSpeak
 
 En una instalación existente:
 
@@ -454,12 +473,14 @@ pip install -r requirements.txt
 Y vuelve a iniciar:
 
 python bot.py
-📦 Versión
+
+## 📦 Versión
 
 Versión estable actual:
 
-PenguSpeak 1.0.0
-📜 Licencia
+PenguSpeak 1.1.0
+
+## 📜 Licencia
 
 Este proyecto está disponible bajo la licencia MIT.
 
