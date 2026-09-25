@@ -417,6 +417,8 @@ tmux attach -t penguspeak
 
 ## 📁 Estructura del proyecto
 
+
+```text
 PenguSpeak/
 ├── bot.py
 ├── config.py
@@ -439,6 +441,7 @@ PenguSpeak/
     ├── text.py
     ├── views.py
     └── voices.py
+```
     
 ## 🔒 Seguridad
 
