@@ -48,6 +48,8 @@ PenguSpeak:
 📋 Requisitos
 Python
 
+```
+
 Se recomienda:
 
 Python 3.12+
