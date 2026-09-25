@@ -45,10 +45,10 @@ y adjunta una imagen.
 
 PenguSpeak:
 "Yarin envió una imagen y dice: mira esto"
+```
+
 📋 Requisitos
 Python
-
-```
 
 Se recomienda:
 
