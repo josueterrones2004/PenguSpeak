@@ -1,37 +1,63 @@
-import asyncio
-import subprocess
-import time
 
+import asyncio
+import io
+import os
+import time
+from xml.sax.saxutils import escape
+
+import aiohttp
 import discord
-import edge_tts
+from dotenv import load_dotenv
 
 from penguspeak.state import guild_audio_locks
 from penguspeak.voices import VOICES
 
 
+load_dotenv()
+
+
 # ============================================================
-# CONFIGURACIÓN LOW LATENCY
+# CONFIGURACIÓN
 # ============================================================
 
 TTS_RATE = "+30%"
 
-# Cantidad máxima de fragmentos MP3 preparados en RAM.
-STREAM_BUFFER_SIZE = 32
+AZURE_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3"
 
-# Discord usa PCM:
-# 48 kHz × 2 canales × 2 bytes × 20 ms = 3840 bytes.
-DISCORD_PCM_FRAME_SIZE = 3840
+AZURE_TIMEOUT = aiohttp.ClientTimeout(
+    total=30,
+    connect=10,
+    sock_read=15,
+)
+
+
+def get_azure_config():
+    key = os.getenv("AZURE_SPEECH_KEY", "").strip()
+    region = os.getenv("AZURE_SPEECH_REGION", "").strip()
+
+    if not key or not region:
+        raise RuntimeError(
+            "Faltan AZURE_SPEECH_KEY o "
+            "AZURE_SPEECH_REGION en .env"
+        )
+
+    return key, region
 
 
 # ============================================================
-# STREAM EDGE TTS
+# STREAM AZURE SPEECH
 # ============================================================
 
-class EdgeTTSStream:
+class AzureTTSStream:
     """
-    Recibe audio desde Edge TTS progresivamente.
+    Genera un MP3 completo mediante Azure Speech.
 
-    No espera a que Edge termine de generar todo el mensaje.
+    Mantiene la interfaz utilizada por queue.py:
+      - start()
+      - cancel()
+
+    La generación comienza inmediatamente para permitir
+    el prefetch de mensajes pendientes.
     """
 
     def __init__(
@@ -40,23 +66,25 @@ class EdgeTTSStream:
         voice_id,
         started_at=None,
     ):
-        data = VOICES.get(
-            voice_id
-        )
+        voice_data = VOICES.get(voice_id)
 
-        if not data:
+        if voice_data is None:
             raise ValueError(
                 f"Voz desconocida: {voice_id}"
             )
 
-        if data["engine"] != "edge":
+        if voice_data.get("engine") not in (
+            "edge",
+            "azure",
+        ):
             raise ValueError(
-                f"Motor no compatible: {data['engine']}"
+                "Motor de voz no compatible: "
+                f"{voice_data.get('engine')}"
             )
 
-        self.text = text
+        self.text = str(text)
         self.voice_id = voice_id
-        self.voice = data["voice"]
+        self.voice = voice_data["voice"]
 
         self.started_at = (
             started_at
@@ -64,462 +92,173 @@ class EdgeTTSStream:
             else time.perf_counter()
         )
 
-        self.loop = asyncio.get_running_loop()
-
-        self.queue = asyncio.Queue(
-            maxsize=STREAM_BUFFER_SIZE
-        )
-
         self.task = None
-
         self.error = None
+        self.audio = None
+
         self.finished = False
         self.first_audio_at = None
+        self.completed_at = None
 
-    def start(
-        self,
-    ):
-        if (
-            self.task is None
-            or self.task.done()
-        ):
+    def start(self):
+        if self.task is None:
             self.task = asyncio.create_task(
-                self._producer()
+                self._generate()
             )
 
         return self.task
 
-    async def _producer(
-        self,
-    ):
-        cancelled = False
+    def _build_ssml(self):
+        safe_text = escape(self.text)
 
-        communicate = edge_tts.Communicate(
-            self.text,
+        safe_voice = escape(
             self.voice,
-            rate=TTS_RATE,
+            {'"': "&quot;"},
+        )
+
+        return (
+            '<speak version="1.0" '
+            'xmlns="http://www.w3.org/2001/10/synthesis" '
+            'xml:lang="es-MX">'
+            f'<voice name="{safe_voice}">'
+            f'<prosody rate="{TTS_RATE}">'
+            f"{safe_text}"
+            "</prosody>"
+            "</voice>"
+            "</speak>"
+        )
+
+    async def _generate(self):
+        key, region = get_azure_config()
+
+        url = (
+            f"https://{region}."
+            "tts.speech.microsoft.com/"
+            "cognitiveservices/v1"
+        )
+
+        headers = {
+            "Ocp-Apim-Subscription-Key": key,
+            "Content-Type": "application/ssml+xml",
+            "X-Microsoft-OutputFormat": (
+                AZURE_OUTPUT_FORMAT
+            ),
+            "User-Agent": "PenguSpeak/2.0",
+        }
+
+        print(
+            "[TTS] Motor: Azure Speech | "
+            f"Voz: {self.voice}"
         )
 
         try:
-            async for chunk in communicate.stream():
-                if chunk["type"] != "audio":
-                    continue
+            async with aiohttp.ClientSession(
+                timeout=AZURE_TIMEOUT
+            ) as session:
 
-                if self.first_audio_at is None:
-                    self.first_audio_at = (
+                async with session.post(
+                    url,
+                    headers=headers,
+                    data=self._build_ssml().encode(
+                        "utf-8"
+                    ),
+                ) as response:
+
+                    if response.status != 200:
+                        detail = (
+                            await response.text()
+                        )[:300]
+
+                        raise RuntimeError(
+                            f"Azure HTTP {response.status}: "
+                            f"{detail}"
+                        )
+
+                    chunks = []
+
+                    async for chunk in (
+                        response.content.iter_chunked(8192)
+                    ):
+                        if not chunk:
+                            continue
+
+                        if self.first_audio_at is None:
+                            self.first_audio_at = (
+                                time.perf_counter()
+                            )
+
+                            elapsed = (
+                                self.first_audio_at
+                                - self.started_at
+                            ) * 1000
+
+                            print(
+                                "[TTS PERF] "
+                                "Primer audio Azure: "
+                                f"{elapsed:.0f} ms"
+                            )
+
+                        chunks.append(chunk)
+
+                    self.audio = b"".join(chunks)
+
+                    if not self.audio:
+                        raise RuntimeError(
+                            "Azure devolvió audio vacío"
+                        )
+
+                    self.completed_at = (
                         time.perf_counter()
                     )
 
                     elapsed = (
-                        self.first_audio_at
+                        self.completed_at
                         - self.started_at
                     ) * 1000
 
                     print(
                         "[TTS PERF] "
-                        "Primer audio Edge: "
-                        f"{elapsed:.0f} ms"
+                        "MP3 completo: "
+                        f"{elapsed:.0f} ms | "
+                        f"{len(self.audio)} bytes"
                     )
 
-                await self.queue.put(
-                    chunk["data"]
-                )
-
         except asyncio.CancelledError:
-            cancelled = True
             raise
 
         except Exception as exc:
             self.error = exc
 
             print(
-                "[TTS] Error Edge TTS: "
+                "[TTS] Error Azure Speech: "
                 f"{exc!r}"
             )
 
         finally:
             self.finished = True
 
-            # En finalización normal avisamos al consumidor
-            # de que no habrá más audio.
-            if not cancelled:
-                try:
-                    await self.queue.put(
-                        None
-                    )
+    async def get_audio(self):
+        if self.task is None:
+            self.start()
 
-                except asyncio.CancelledError:
-                    pass
+        await self.task
 
-    async def get_chunk(
-        self,
-    ):
-        return await self.queue.get()
+        if self.error is not None:
+            raise self.error
 
-    def cancel(
-        self,
-    ):
-        """
-        Puede llamarse desde asyncio o desde el hilo
-        de reproducción de discord.py.
-        """
+        if not self.audio:
+            raise RuntimeError(
+                "No se generó audio para reproducir"
+            )
 
+        return self.audio
+
+    def cancel(self):
         if (
-            self.task is None
-            or self.task.done()
+            self.task is not None
+            and not self.task.done()
         ):
-            return
-
-        try:
-            self.loop.call_soon_threadsafe(
-                self.task.cancel
-            )
-
-        except RuntimeError:
-            pass
-
-
-# ============================================================
-# AUDIO SOURCE DE DISCORD
-# ============================================================
-
-class EdgeStreamingAudioSource(
-    discord.AudioSource
-):
-    """
-    Flujo:
-
-        Edge MP3
-            ↓
-        FFmpeg
-            ↓
-        PCM 48 kHz estéreo
-            ↓
-        Discord
-
-    La escritura a FFmpeg nunca bloquea el event loop.
-    """
-
-    def __init__(
-        self,
-        stream,
-    ):
-        self.stream = stream
-
-        self.loop = asyncio.get_running_loop()
-
-        self.first_pcm_at = None
-        self.closed = False
-
-        command = [
-            "ffmpeg",
-
-            "-hide_banner",
-            "-loglevel",
-            "error",
-
-            # Reducir buffering inicial.
-            "-fflags",
-            "nobuffer",
-
-            "-probesize",
-            "32",
-
-            "-analyzeduration",
-            "0",
-
-            # Edge entrega MP3.
-            "-f",
-            "mp3",
-
-            "-i",
-            "pipe:0",
-
-            # Salida PCM requerida por discord.py.
-            "-f",
-            "s16le",
-
-            "-ar",
-            "48000",
-
-            "-ac",
-            "2",
-
-            "pipe:1",
-        ]
-
-        self.process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            bufsize=0,
-        )
-
-        self.writer_task = asyncio.create_task(
-            self._feed_ffmpeg()
-        )
-
-    # ========================================================
-    # EDGE -> FFMPEG
-    # ========================================================
-
-    def _write_chunk_blocking(
-        self,
-        data,
-    ):
-        """
-        Escritura bloqueante ejecutada mediante to_thread().
-        """
-
-        stdin = self.process.stdin
-
-        if (
-            stdin is None
-            or stdin.closed
-            or self.process.poll() is not None
-        ):
-            return False
-
-        try:
-            view = memoryview(
-                data
-            )
-
-            while view:
-                if (
-                    self.closed
-                    or self.process.poll() is not None
-                ):
-                    return False
-
-                written = stdin.write(
-                    view
-                )
-
-                if written is None:
-                    continue
-
-                if written <= 0:
-                    return False
-
-                view = view[
-                    written:
-                ]
-
-            return True
-
-        except (
-            BrokenPipeError,
-            ValueError,
-            OSError,
-        ):
-            return False
-
-    async def _feed_ffmpeg(
-        self,
-    ):
-        try:
-            while True:
-                data = await self.stream.get_chunk()
-
-                if data is None:
-                    break
-
-                if (
-                    self.closed
-                    or self.process.stdin is None
-                    or self.process.poll() is not None
-                ):
-                    break
-
-                success = await asyncio.to_thread(
-                    self._write_chunk_blocking,
-                    data,
-                )
-
-                if not success:
-                    break
-
-        except asyncio.CancelledError:
-            raise
-
-        except Exception as exc:
-            print(
-                "[TTS] Error enviando "
-                f"audio a FFmpeg: {exc!r}"
-            )
-
-        finally:
-            try:
-                if (
-                    self.process.stdin
-                    and not self.process.stdin.closed
-                ):
-                    self.process.stdin.close()
-
-            except Exception:
-                pass
-
-    # ========================================================
-    # FFMPEG -> DISCORD
-    # ========================================================
-
-    def read(
-        self,
-    ):
-        """
-        Discord llama a read() desde su propio hilo.
-
-        Debemos devolver exactamente 3840 bytes por frame,
-        salvo cuando el audio haya terminado realmente.
-        """
-
-        if (
-            self.closed
-            or self.process.stdout is None
-        ):
-            return b""
-
-        frame = bytearray()
-
-        try:
-            while (
-                len(frame)
-                < DISCORD_PCM_FRAME_SIZE
-            ):
-                remaining = (
-                    DISCORD_PCM_FRAME_SIZE
-                    - len(frame)
-                )
-
-                chunk = self.process.stdout.read(
-                    remaining
-                )
-
-                # EOF real de FFmpeg.
-                if not chunk:
-                    break
-
-                frame.extend(
-                    chunk
-                )
-
-        except (
-            ValueError,
-            OSError,
-        ):
-            return b""
-
-        # No llegó absolutamente nada:
-        # el audio terminó.
-        if not frame:
-            return b""
-
-        if self.first_pcm_at is None:
-            self.first_pcm_at = (
-                time.perf_counter()
-            )
-
-            elapsed = (
-                self.first_pcm_at
-                - self.stream.started_at
-            ) * 1000
-
-            print(
-                "[TTS PERF] "
-                "Primer PCM para Discord: "
-                f"{elapsed:.0f} ms"
-            )
-
-        # Si el último frame queda incompleto,
-        # rellenamos el resto con silencio.
-        if (
-            len(frame)
-            < DISCORD_PCM_FRAME_SIZE
-        ):
-            frame.extend(
-                b"\x00"
-                * (
-                    DISCORD_PCM_FRAME_SIZE
-                    - len(frame)
-                )
-            )
-
-        return bytes(
-            frame
-        )
-
-    def is_opus(
-        self,
-    ):
-        return False
-
-    # ========================================================
-    # LIMPIEZA
-    # ========================================================
-
-    def cleanup(
-        self,
-    ):
-        """
-        Puede ejecutarse desde el hilo de audio de Discord.
-        """
-
-        if self.closed:
-            return
-
-        self.closed = True
-
-        self.stream.cancel()
-
-        if (
-            self.writer_task
-            and not self.writer_task.done()
-        ):
-            try:
-                self.loop.call_soon_threadsafe(
-                    self.writer_task.cancel
-                )
-
-            except RuntimeError:
-                pass
-
-        # Matar FFmpeg desbloquea cualquier write/read pendiente.
-        try:
-            if self.process.poll() is None:
-                self.process.kill()
-
-        except Exception:
-            pass
-
-        try:
-            if (
-                self.process.stdin
-                and not self.process.stdin.closed
-            ):
-                self.process.stdin.close()
-
-        except Exception:
-            pass
-
-        try:
-            if (
-                self.process.stdout
-                and not self.process.stdout.closed
-            ):
-                self.process.stdout.close()
-
-        except Exception:
-            pass
-
-        try:
-            self.process.wait(
-                timeout=0.5
-            )
-
-        except Exception:
-            pass
+            self.task.cancel()
 
 
 # ============================================================
@@ -531,7 +270,7 @@ def create_audio_stream(
     voice_id,
     started_at=None,
 ):
-    stream = EdgeTTSStream(
+    stream = AzureTTSStream(
         text=text,
         voice_id=voice_id,
         started_at=started_at,
@@ -543,7 +282,7 @@ def create_audio_stream(
 
 
 # ============================================================
-# REPRODUCIR
+# REPRODUCCIÓN EN DISCORD
 # ============================================================
 
 async def play_audio(
@@ -559,37 +298,95 @@ async def play_audio(
 
     async with lock:
         finished = asyncio.Event()
-
-        source = EdgeStreamingAudioSource(
-            stream
-        )
-
-        def after_playing(
-            error,
-        ):
-            if error:
-                print(
-                    "[TTS] Error reproduciendo audio: "
-                    f"{error!r}"
-                )
-
-            bot.loop.call_soon_threadsafe(
-                finished.set
-            )
+        source = None
+        audio_buffer = None
+        started_playback = False
 
         try:
+            # Esperamos el MP3 completo.
+            # Si ya se generó mediante prefetch,
+            # esta espera será prácticamente nula.
+            audio = await stream.get_audio()
+
+            if not voice_client.is_connected():
+                print(
+                    "[TTS] Reproducción cancelada: "
+                    "bot desconectado"
+                )
+                return
+
+            # BytesIO permite que FFmpeg lea el MP3
+            # desde memoria sin crear archivos temporales.
+            audio_buffer = io.BytesIO(audio)
+
+            source = discord.FFmpegPCMAudio(
+                audio_buffer,
+                pipe=True,
+                before_options="-f mp3",
+                options="-vn",
+            )
+
+            def after_playing(error):
+                if error is not None:
+                    print(
+                        "[TTS] Error reproduciendo: "
+                        f"{error!r}"
+                    )
+
+                try:
+                    bot.loop.call_soon_threadsafe(
+                        finished.set
+                    )
+                except RuntimeError:
+                    pass
+
+            elapsed = (
+                time.perf_counter()
+                - stream.started_at
+            ) * 1000
+
+            print(
+                "[TTS PERF] "
+                "Iniciando reproducción Discord: "
+                f"{elapsed:.0f} ms"
+            )
+
             voice_client.play(
                 source,
                 after=after_playing,
             )
 
+            started_playback = True
+
             await finished.wait()
 
-        finally:
-            # Normalmente discord.py ya hace cleanup(),
-            # pero esto garantiza que FFmpeg/Edge no queden vivos.
-            try:
-                source.cleanup()
+            print(
+                "[TTS] Reproducción finalizada"
+            )
 
-            except Exception:
-                pass
+        except asyncio.CancelledError:
+            stream.cancel()
+
+            if started_playback:
+                try:
+                    voice_client.stop()
+                except Exception:
+                    pass
+
+            raise
+
+        except Exception as exc:
+            print(
+                "[TTS] Error reproduciendo audio: "
+                f"{exc!r}"
+            )
+
+        finally:
+            if source is not None:
+                try:
+                    source.cleanup()
+                except Exception:
+                    pass
+
+            if audio_buffer is not None:
+                audio_buffer.close()
