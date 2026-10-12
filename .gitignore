@@ -24,3 +24,8 @@ temp/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Archivos de prueba de TTS
+azure-test.mp3
+prueba.mp3
+test-en.mp3
