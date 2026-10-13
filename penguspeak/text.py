@@ -1014,16 +1014,21 @@ async def build_spoken_message(
     # ========================================================
 
     if has_link:
-        phrase = (
-            f"{author_name} "
-            "envió un enlace"
-        )
+        phrase = f"{author_name} envió un enlace"
+
+        if mentioned_names:
+            targets = " y ".join(
+                f"a {name}" for name in mentioned_names
+            ) if len(mentioned_names) == 2 else (
+                ", ".join(f"a {name}" for name in mentioned_names[:-1])
+                + f" y a {mentioned_names[-1]}"
+                if len(mentioned_names) > 2
+                else f"a {mentioned_names[0]}"
+            )
+            phrase += f" y etiquetó {targets}"
 
         if caption:
-            return (
-                f"{phrase} "
-                f"y dice: {caption}"
-            )
+            return f"{phrase}: {caption}"
 
         return phrase
 
@@ -1037,14 +1042,49 @@ async def build_spoken_message(
         )
     )
 
+    if mentioned_names:
+        normal_text = process_message_text(
+            message.content or "",
+            message,
+            include_user_mentions=False,
+        )
+        # Conservamos los textos de stickers y archivos adjuntos.
+        full_text = clean_message_text(message)
+        without_mentions = process_message_text(
+            message.content or "",
+            message,
+            include_user_mentions=False,
+        )
+        with_mentions = process_message_text(
+            message.content or "",
+            message,
+            include_user_mentions=True,
+        )
+        if full_text.startswith(with_mentions):
+            normal_text = without_mentions + full_text[len(with_mentions):]
+        normal_text = normalize_spaces(normal_text)
+
     reply_name = (
         await get_reply_target_name(
             message
         )
     )
 
-    if not normal_text:
+    if not normal_text and not mentioned_names:
         return None
+
+    if mentioned_names:
+        if len(mentioned_names) == 1:
+            phrase = f"{author_name} mencionó a {mentioned_names[0]}"
+        else:
+            targets = (
+                " y ".join(f"a {name}" for name in mentioned_names)
+                if len(mentioned_names) == 2
+                else ", ".join(f"a {name}" for name in mentioned_names[:-1])
+                + f" y a {mentioned_names[-1]}"
+            )
+            phrase = f"{author_name} etiquetó {targets}"
+        return f"{phrase}: {normal_text}" if normal_text else phrase
 
     # --------------------------------------------------------
     # REPLY
