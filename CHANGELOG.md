@@ -1,24 +1,15 @@
-# Historial de cambios — PenguSpeak
+# Changelog — PenguSpeak
 
-## [1.2.0] — En preparación
+## [v1.3.0] — Actualización del bot
 
-### Sitio web
-- Nueva landing page estática en `docs/`, diseñada para publicarse mediante GitHub Pages.
-- Presentación interactiva del pingüino en arte ASCII.
-- Renderizado WebGL2 en móviles compatibles, conservando la experiencia Canvas 2D de escritorio.
-- Mejoras de inicialización y recuperación del renderizado al volver a la página.
-- Ajustes de desplazamiento y tamaño del viewport en Chrome Android.
+Cambios incorporados en esta actualización:
 
-### Documentación
-- README actualizado con instrucciones de instalación, configuración, comandos y publicación web.
-- Aclaración del número de versión: el nombre histórico de la rama `development/2.0` no representa una versión 2.0 publicada.
+- **Respaldo automático:** Edge TTS permanece como motor principal. Cuando falla, PenguSpeak utiliza Azure Speech si está configurado y comprueba periódicamente si Edge vuelve a estar disponible.
+- **Avisos del servicio:** notificaciones del cambio a Azure y del regreso a Edge para servidores que estén utilizando TTS, sin repetir avisos innecesarios.
+- **Panel `/tts configurar`:** selección de voces con navegación, edición de apodo y opciones para restablecer preferencias.
+- **Voces y configuración:** reorganización de los catálogos Edge/Azure y del almacenamiento de preferencias en SQLite.
+- **Lectura de mensajes:** mejoras en las frases de menciones, respuestas y anuncios de imágenes, videos, enlaces y adjuntos combinados.
+- **Colas y sesiones:** ajustes de reproducción progresiva, cancelación de mensajes, conexiones de voz y desconexión por inactividad.
+- **Mantenimiento:** reorganización interna de módulos y actualización de dependencias.
 
-> Esta entrada documenta el trabajo de la web y la preparación de la versión. Los cambios del motor de voz no se incluyen hasta que se verifiquen y publiquen.
-
-## [1.1] — Versión anterior
-
-- Mejoras de latencia y reproducción TTS desarrolladas previamente.
-
-## [1.0.0] — Versión inicial documentada
-
-- Bot TTS para Discord con voces configurables, colas, comandos de voz y OCR opcional.
+**Alcance:** este historial recoge únicamente los cambios de la v1.3.0 del bot. La incorporación inicial de Azure Speech corresponde a la versión anterior. La nueva página web no forma parte de esta actualización.
