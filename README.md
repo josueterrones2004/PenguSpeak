@@ -25,7 +25,7 @@ Azure Speech es opcional y puede estar sujeto a cuotas o costes según la cuenta
 | --- | --- |
 | `/tts iniciar` | Activa la lectura automática. |
 | `/tts detener` | Desactiva la lectura automática. |
-| `/tts decir` | Reproduce texto o intenta leer texto de una imagen. |
+| `/tts decir` | Reproduce texto. |
 | `/tts saltar` | Salta un mensaje propio de la cola. |
 | `/tts configurar` | Abre el panel personal de voz y apodo. |
 | `/voz actual` | Consulta la voz actual. |
