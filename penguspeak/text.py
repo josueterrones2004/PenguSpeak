@@ -5,7 +5,12 @@ import discord
 import emoji
 
 from penguspeak.database import get_nickname
-from penguspeak.ocr import is_supported_image
+def is_supported_image(attachment):
+    filename = (attachment.filename or "").lower()
+    content_type = (attachment.content_type or "").lower()
+    return content_type.startswith("image/") or filename.endswith(
+        (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
+    )
 from penguspeak.state import should_announce_name
 
 
@@ -345,7 +350,7 @@ def build_target_clause(targets):
 
 
 async def build_spoken_message(message):
-    """Build natural TTS text; OCR remains exclusive to explicit image commands."""
+    """Build natural TTS text for Discord messages."""
     author_name = get_spoken_name(message.author)
     targets = get_mention_targets(message)
     caption = get_media_caption(message)

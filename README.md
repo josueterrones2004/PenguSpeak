@@ -5,7 +5,7 @@
 ## Características
 
 - Lectura automática de mensajes mediante `/tts iniciar` y `/tts detener`, para usuarios que permanezcan en el canal de voz de la sesión.
-- Lectura manual mediante `/tts decir`, con opción de adjuntar una imagen para extraer su texto con Tesseract (OCR). El OCR no se ejecuta automáticamente sobre las imágenes del chat.
+- Lectura manual de texto mediante `/tts decir`.
 - Voces masculinas y femeninas en español de diferentes regiones, con muestras de audio cuando estén disponibles.
 - Panel interactivo `/tts configurar` para elegir voz, editar apodo y restablecer preferencias.
 - Lectura contextual de menciones, respuestas, emojis, stickers, enlaces, imágenes, videos y archivos adjuntos.
@@ -37,19 +37,19 @@ Azure Speech es opcional y puede estar sujeto a cuotas o costes según la cuenta
 
 ## Instalación
 
-Necesitas Python, FFmpeg y una aplicación de Discord con **Message Content Intent** habilitado y permisos para leer mensajes, conectarse y hablar en canales de voz. Para utilizar OCR también necesitas Tesseract y datos de idioma español.
+Necesitas Python, FFmpeg y una aplicación de Discord con **Message Content Intent** habilitado y permisos para leer mensajes, conectarse y hablar en canales de voz.
 
 En Arch Linux / CachyOS:
 
 ```sh
-sudo pacman -S ffmpeg tesseract tesseract-data-spa
+sudo pacman -S ffmpeg
 ```
 
 En Debian / Ubuntu:
 
 ```sh
 sudo apt update
-sudo apt install ffmpeg tesseract-ocr tesseract-ocr-spa
+sudo apt install ffmpeg
 ```
 
 Clona el proyecto e instala las dependencias:

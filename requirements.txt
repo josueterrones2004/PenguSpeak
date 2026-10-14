@@ -4,5 +4,4 @@ edge-tts @ git+https://github.com/jonata/edge-tts.git@8a5844c3a1d33e4e8f2f3e1453
 aiohttp>=3.9,<4
 python-dotenv==1.2.3
 Pillow==12.3.0
-pytesseract==0.3.13
 emoji>=2.14,<3

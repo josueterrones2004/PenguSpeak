@@ -14,10 +14,6 @@ from penguspeak.database import (
     remove_nickname,
     set_nickname,
 )
-from penguspeak.ocr import (
-    get_attachment_ocr_text,
-    is_supported_image,
-)
 from penguspeak.queue import (
     add_to_queue,
     ensure_guild_worker,
@@ -760,56 +756,26 @@ async def tts_detener(
 # ============================================================
 @tts_group.command(
     name="decir",
-    description=(
-        "Reproduce texto o lee "
-        "el texto de una imagen."
-    ),
+    description="Reproduce el texto que escribas.",
 )
 @app_commands.describe(
-    texto=(
-        "Texto que quieres reproducir"
-    ),
-    imagen=(
-        "Imagen cuyo texto quieres leer"
-    ),
+    texto="Texto que quieres reproducir",
 )
 async def tts_decir(
     interaction: discord.Interaction,
-    texto: str | None = None,
-    imagen: discord.Attachment | None = None,
+    texto: str,
 ):
-    command_started_at = (
-        time.perf_counter()
-    )
+    command_started_at = time.perf_counter()
     await interaction.response.defer()
     if not interaction.guild:
         await interaction.followup.send(
-            "❌ Este comando solo puede "
-            "usarse dentro de un servidor."
+            "❌ Este comando solo puede usarse dentro de un servidor."
         )
         return
-    if texto:
-        texto = normalize_spaces(
-            texto
-        )
-    if (
-        not texto
-        and imagen is None
-    ):
+    texto = normalize_spaces(texto)
+    if not texto:
         await interaction.followup.send(
-            "❌ Debes escribir texto "
-            "o adjuntar una imagen."
-        )
-        return
-    if (
-        imagen is not None
-        and not is_supported_image(
-            imagen
-        )
-    ):
-        await interaction.followup.send(
-            "❌ El archivo adjunto "
-            "no es una imagen compatible."
+            "❌ Debes escribir texto."
         )
         return
     # --------------------------------------------------------
@@ -852,70 +818,7 @@ async def tts_decir(
         )
         else interaction.user.name
     )
-    spoken_parts = []
-    if texto:
-        spoken_parts.append(
-            texto
-        )
-    ocr_text = ""
-    # --------------------------------------------------------
-    # OCR
-    # --------------------------------------------------------
-    if imagen is not None:
-        print(
-            "[TTS DECIR] "
-            "Procesando imagen con OCR..."
-        )
-        try:
-            ocr_text = (
-                await get_attachment_ocr_text(
-                    imagen
-                )
-            )
-        except Exception as exc:
-            print(
-                "[TTS DECIR] "
-                "Error procesando OCR: "
-                f"{exc}"
-            )
-            ocr_text = ""
-        if ocr_text:
-            spoken_parts.append(
-                ocr_text
-            )
-    final_text = normalize_spaces(
-        ". ".join(
-            spoken_parts
-        )
-    )
-    if not final_text:
-        if imagen is not None:
-            try:
-                image_file = (
-                    await imagen.to_file()
-                )
-                await interaction.followup.send(
-                    content=(
-                        f"**{display_name}:** "
-                        "*(no se detectó texto)*"
-                    ),
-                    file=image_file,
-                )
-            except Exception as exc:
-                print(
-                    "[TTS DECIR] "
-                    "Error enviando imagen: "
-                    f"{exc}"
-                )
-                await interaction.followup.send(
-                    "❌ No pude detectar texto "
-                    "en la imagen."
-                )
-            return
-        await interaction.followup.send(
-            "❌ No hay nada que reproducir."
-        )
-        return
+    final_text = texto
     # --------------------------------------------------------
     # AÑADIR A COLA
     # --------------------------------------------------------
@@ -955,37 +858,6 @@ async def tts_decir(
     # --------------------------------------------------------
     # RESPUESTA PÚBLICA
     # --------------------------------------------------------
-    if imagen is not None:
-        try:
-            image_file = (
-                await imagen.to_file()
-            )
-            if texto:
-                await interaction.followup.send(
-                    content=(
-                        f"**{display_name}:** "
-                        f"{texto}"
-                    ),
-                    file=image_file,
-                )
-            else:
-                await interaction.followup.send(
-                    content=(
-                        f"**{display_name}:**"
-                    ),
-                    file=image_file,
-                )
-        except Exception as exc:
-            print(
-                "[TTS DECIR] "
-                "Error enviando imagen: "
-                f"{exc}"
-            )
-            await interaction.followup.send(
-                f"**{display_name}:** "
-                "🖼️ imagen procesada"
-            )
-        return
     await interaction.followup.send(
         f"**{display_name}:** "
         f"{final_text}"
