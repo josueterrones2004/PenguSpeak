@@ -4,1110 +4,389 @@ import unicodedata
 import discord
 import emoji
 
-from penguspeak.database import (
-    get_nickname,
-)
-
-from penguspeak.ocr import (
-    is_supported_image,
-)
-
-from penguspeak.state import (
-    should_announce_name,
-)
+from penguspeak.database import get_nickname
+from penguspeak.ocr import is_supported_image
+from penguspeak.state import should_announce_name
 
 
-# ============================================================
-# UTILIDADES
-# ============================================================
-
-def normalize_spaces(
-    text,
-):
-    return re.sub(
-        r"\s+",
-        " ",
-        text,
-    ).strip()
+URL_PATTERN = re.compile(r"https?://\S+|www\.\S+", re.IGNORECASE)
+CUSTOM_EMOJI_PATTERN = re.compile(r"<a?:([A-Za-z0-9_]+):\d+>")
+UNICODE_EMOJI_EASTER_EGGS = {"👀": "ojitos void"}
+MENTION_PATTERN = re.compile(r"<@!?\d+>|<@&\d+>|@(?:everyone|here)\b")
+VIDEO_EXTENSIONS = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
 
 
-def format_name_list(
-    names,
-):
+def normalize_spaces(text):
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def format_name_list(names):
     if not names:
         return ""
-
     if len(names) == 1:
         return names[0]
-
     if len(names) == 2:
-        return (
-            f"{names[0]} "
-            f"y {names[1]}"
-        )
-
-    return (
-        ", ".join(
-            names[:-1]
-        )
-        + f" y {names[-1]}"
-    )
+        return f"{names[0]} y {names[1]}"
+    return ", ".join(names[:-1]) + f" y {names[-1]}"
 
 
-# ============================================================
-# VALIDACIÓN DE APODOS
-# ============================================================
-
-def is_valid_nickname(
-    text,
-):
+def is_valid_nickname(text):
     if not text:
         return False
-
-    for character in text:
-        if character.isspace():
-            continue
-
-        category = (
-            unicodedata.category(
-                character
-            )
-        )
-
-        if (
-            not category.startswith("L")
-            and not category.startswith("N")
-        ):
-            return False
-
-    return True
-
-
-# ============================================================
-# LIMPIEZA DE NOMBRES
-# ============================================================
-
-def clean_discord_name(
-    name,
-):
-    cleaned = []
-
-    for character in name:
-        if character.isspace():
-            cleaned.append(
-                " "
-            )
-
-            continue
-
-        category = (
-            unicodedata.category(
-                character
-            )
-        )
-
-        if (
-            category.startswith("L")
-            or category.startswith("N")
-        ):
-            cleaned.append(
-                character
-            )
-
-    result = normalize_spaces(
-        "".join(
-            cleaned
-        )
+    return all(
+        character.isspace()
+        or unicodedata.category(character).startswith(("L", "N"))
+        for character in text
     )
 
-    if not result:
-        return "Usuario"
 
-    return result
-
-
-def get_spoken_name(
-    member,
-):
-    nickname = get_nickname(
-        member.id
+def clean_discord_name(name):
+    cleaned = "".join(
+        character if character.isspace() or unicodedata.category(character).startswith(("L", "N")) else ""
+        for character in name
     )
+    return normalize_spaces(cleaned) or "Usuario"
 
+
+def get_spoken_name(member):
+    nickname = get_nickname(member.id)
     if nickname:
         return nickname
-
-    if isinstance(
-        member,
-        discord.Member,
-    ):
-        return clean_discord_name(
-            member.display_name
-        )
-
-    return clean_discord_name(
-        member.name
-    )
+    if isinstance(member, discord.Member):
+        return clean_discord_name(member.display_name)
+    return clean_discord_name(member.name)
 
 
-# ============================================================
-# URLS
-# ============================================================
-
-URL_PATTERN = re.compile(
-    r"https?://\S+|www\.\S+",
-    re.IGNORECASE,
-)
+def message_contains_url(message):
+    return bool(URL_PATTERN.search(message.content or ""))
 
 
-def message_contains_url(
-    message,
-):
-    return bool(
-        URL_PATTERN.search(
-            message.content
-            or ""
-        )
-    )
+def remove_urls(text):
+    return normalize_spaces(URL_PATTERN.sub(" ", text))
 
 
-def remove_urls(
-    text,
-):
-    return normalize_spaces(
-        URL_PATTERN.sub(
-            " ",
-            text,
-        )
-    )
+def humanize_custom_emoji_name(name):
+    name = name.replace("_", " ")
+    return normalize_spaces(re.sub(r"(?<=[a-záéíóúñ])(?=[A-ZÁÉÍÓÚÑ])", " ", name))
 
 
-# ============================================================
-# EMOJIS PERSONALIZADOS DE DISCORD
-# ============================================================
-
-CUSTOM_EMOJI_PATTERN = re.compile(
-    r"<a?:([A-Za-z0-9_]+):\d+>"
-)
-
-
-def humanize_custom_emoji_name(
-    name,
-):
-    # snake_case
-    name = name.replace(
-        "_",
-        " ",
-    )
-
-    # camelCase
-    name = re.sub(
-        r"(?<=[a-záéíóúñ])"
-        r"(?=[A-ZÁÉÍÓÚÑ])",
-        " ",
-        name,
-    )
-
-    return normalize_spaces(
-        name
-    )
-
-
-def replace_custom_emojis(
-    text,
-):
-    def repl(
-        match,
-    ):
-        emoji_name = (
-            match.group(1)
-        )
-
-        spoken_name = (
-            humanize_custom_emoji_name(
-                emoji_name
-            )
-        )
-
-        if not spoken_name:
-            return " "
-
-        return (
-            f" {spoken_name} "
-        )
-
+def replace_custom_emojis(text):
     return CUSTOM_EMOJI_PATTERN.sub(
-        repl,
-        text,
+        lambda match: f" {humanize_custom_emoji_name(match.group(1))} ", text
     )
 
 
-# ============================================================
-# EMOJIS UNICODE
-# ============================================================
-
-UNICODE_EMOJI_EASTER_EGGS = {
-    "👀": "ojitos void",
-}
+def humanize_unicode_emoji_name(name):
+    return normalize_spaces(name.replace("_", " ").replace("-", " "))
 
 
-def humanize_unicode_emoji_name(
-    name,
-):
-    name = name.replace(
-        "_",
-        " ",
-    )
-
-    name = name.replace(
-        "-",
-        " ",
-    )
-
-    return normalize_spaces(
-        name
-    )
-
-
-def replace_unicode_emojis(
-    text,
-):
+def replace_unicode_emojis(text):
     if not text:
         return ""
-
-    # --------------------------------------------------------
-    # EASTER EGGS
-    # --------------------------------------------------------
-
-    for (
-        unicode_emoji,
-        spoken_text,
-    ) in (
-        UNICODE_EMOJI_EASTER_EGGS.items()
-    ):
-        text = text.replace(
-            unicode_emoji,
-            f" {spoken_text} ",
-        )
-
-    # --------------------------------------------------------
-    # DEMÁS EMOJIS EN ESPAÑOL
-    # --------------------------------------------------------
-
-    text = emoji.demojize(
-        text,
-        language="es",
-        delimiters=(
-            "__EMOJI__",
-            "__",
-        ),
-    )
-
-    pattern = re.compile(
-        r"__EMOJI__(.*?)__"
-    )
-
-    def replace_match(
-        match,
-    ):
-        name = (
-            match.group(1)
-        )
-
-        name = (
-            humanize_unicode_emoji_name(
-                name
-            )
-        )
-
-        if not name:
-            return " "
-
-        return (
-            f" {name} "
-        )
-
-    text = pattern.sub(
-        replace_match,
+    for character, spoken in UNICODE_EMOJI_EASTER_EGGS.items():
+        text = text.replace(character, f" {spoken} ")
+    text = emoji.demojize(text, language="es", delimiters=("__EMOJI__", "__"))
+    text = re.sub(
+        r"__EMOJI__(.*?)__",
+        lambda match: f" {humanize_unicode_emoji_name(match.group(1))} ",
         text,
     )
-
-    # --------------------------------------------------------
-    # SÍMBOLOS RESIDUALES
-    # --------------------------------------------------------
-
-    result = []
-
-    for character in text:
-        category = (
-            unicodedata.category(
-                character
-            )
-        )
-
-        if category.startswith(
-            "S"
-        ):
-            continue
-
-        if category in {
-            "Cf",
-            "Cs",
-        }:
-            continue
-
-        result.append(
-            character
-        )
-
-    return normalize_spaces(
-        "".join(
-            result
-        )
-    )
+    return normalize_spaces("".join(
+        character for character in text
+        if not unicodedata.category(character).startswith("S")
+        and unicodedata.category(character) not in {"Cf", "Cs"}
+    ))
 
 
-# ============================================================
-# MENCIONES DE USUARIOS
-# ============================================================
+def get_mention_targets(message):
+    """Return ordered, unique targets found in actual message content.
 
-def get_mentioned_names(
-    message,
-):
-    names = []
+    Member/role IDs prevent conflating people or roles with identical names.
+    @everyone/@here count only when Discord marks the message as a real
+    everyone/here mention.
+    """
+    members = {member.id: member for member in message.mentions}
+    roles = {role.id: role for role in message.role_mentions}
+    everyone_enabled = bool(getattr(message, "mention_everyone", False))
+    targets = []
+    seen = set()
 
-    for member in (
-        message.mentions
-    ):
-        name = get_spoken_name(
-            member
-        )
-
-        if name not in names:
-            names.append(
-                name
-            )
-
-    return names
-
-
-def remove_user_mentions(
-    text,
-    message,
-):
-    for member in (
-        message.mentions
-    ):
-        text = text.replace(
-            f"<@{member.id}>",
-            " ",
-        )
-
-        text = text.replace(
-            f"<@!{member.id}>",
-            " ",
-        )
-
-    return normalize_spaces(
-        text
-    )
+    for match in MENTION_PATTERN.finditer(message.content or ""):
+        token = match.group()
+        if token in {"@everyone", "@here"}:
+            key = ("everyone",)
+            if not everyone_enabled or key in seen:
+                continue
+            label = "a todos"
+        elif token.startswith("<@&"):
+            role_id = int(token[3:-1])
+            role = roles.get(role_id)
+            key = ("role", role_id)
+            if role is None or key in seen:
+                continue
+            label = f"al rol {clean_discord_name(role.name)}"
+        else:
+            member_id = int(token[3:-1] if token.startswith("<@!") else token[2:-1])
+            member = members.get(member_id)
+            key = ("user", member_id)
+            if member is None or key in seen:
+                continue
+            label = f"a {get_spoken_name(member)}"
+        seen.add(key)
+        targets.append(label)
+    return targets
 
 
-def replace_user_mentions(
-    text,
-    message,
-):
-    for member in (
-        message.mentions
-    ):
-        name = get_spoken_name(
-            member
-        )
+def get_mentioned_names(message):
+    return [get_spoken_name(member) for member in message.mentions]
 
-        text = text.replace(
-            f"<@{member.id}>",
-            f" mencionó a {name} ",
-        )
 
-        text = text.replace(
-            f"<@!{member.id}>",
-            f" mencionó a {name} ",
-        )
+def get_mentioned_roles(message):
+    return [clean_discord_name(role.name) for role in message.role_mentions]
 
+
+def has_everyone_mention(message):
+    return any(target == "a todos" for target in get_mention_targets(message))
+
+
+def remove_user_mentions(text, message):
+    for member in message.mentions:
+        text = text.replace(f"<@{member.id}>", " ")
+        text = text.replace(f"<@!{member.id}>", " ")
+    return normalize_spaces(text)
+
+
+def replace_user_mentions(text, message):
+    for member in message.mentions:
+        name = get_spoken_name(member)
+        text = text.replace(f"<@{member.id}>", f" mencionó a {name} ")
+        text = text.replace(f"<@!{member.id}>", f" mencionó a {name} ")
     return text
 
 
-# ============================================================
-# CANALES
-# ============================================================
+def remove_role_mentions(text, message):
+    for role in message.role_mentions:
+        text = text.replace(f"<@&{role.id}>", " ")
+    return normalize_spaces(text)
 
-def replace_channel_mentions(
-    text,
-    message,
-):
-    for channel in (
-        message.channel_mentions
-    ):
-        channel_name = (
-            clean_discord_name(
-                channel.name
-            )
-        )
 
-        text = text.replace(
-            f"<#{channel.id}>",
-            (
-                f" canal "
-                f"{channel_name} "
-            ),
-        )
-
+def replace_role_mentions(text, message):
+    for role in message.role_mentions:
+        text = text.replace(f"<@&{role.id}>", f" mencionó al rol {clean_discord_name(role.name)} ")
     return text
 
 
-# ============================================================
-# ROLES
-# ============================================================
+def remove_everyone_mentions(text, message=None):
+    if message is not None and not getattr(message, "mention_everyone", False):
+        return text
+    return re.sub(r"@(?:everyone|here)\b", " ", text)
 
-def replace_role_mentions(
-    text,
-    message,
-):
-    for role in (
-        message.role_mentions
-    ):
-        role_name = (
-            clean_discord_name(
-                role.name
-            )
-        )
 
-        text = text.replace(
-            f"<@&{role.id}>",
-            (
-                " mencionó al rol "
-                f"{role_name} "
-            ),
-        )
-
+def replace_channel_mentions(text, message):
+    for channel in message.channel_mentions:
+        text = text.replace(f"<#{channel.id}>", f" canal {clean_discord_name(channel.name)} ")
     return text
 
 
-# ============================================================
-# STICKERS
-# ============================================================
+def get_sticker_text(message):
+    return [f"sticker {clean_discord_name(sticker.name)}" for sticker in message.stickers if getattr(sticker, "name", None)]
 
-def get_sticker_text(
-    message,
-):
+
+def count_message_images(message):
+    return sum(1 for attachment in message.attachments if is_supported_image(attachment))
+
+
+def is_video_attachment(attachment):
+    filename = (attachment.filename or "").lower()
+    content_type = (attachment.content_type or "").lower()
+    return content_type.startswith("video/") or filename.endswith(VIDEO_EXTENSIONS)
+
+
+def count_message_videos(message):
+    return sum(1 for attachment in message.attachments if is_video_attachment(attachment))
+
+
+def get_regular_attachment_text(message):
     parts = []
-
-    for sticker in (
-        message.stickers
-    ):
-        sticker_name = (
-            getattr(
-                sticker,
-                "name",
-                "",
-            )
-            or ""
-        )
-
-        sticker_name = (
-            clean_discord_name(
-                sticker_name
-            )
-        )
-
-        if not sticker_name:
+    for attachment in message.attachments:
+        filename = (attachment.filename or "").lower()
+        content_type = (attachment.content_type or "").lower()
+        if filename.endswith(".gif") or content_type == "image/gif":
             continue
-
-        parts.append(
-            (
-                "sticker "
-                f"{sticker_name}"
-            )
-        )
-
+        if is_supported_image(attachment) or is_video_attachment(attachment):
+            continue
+        parts.append("envió un archivo")
     return parts
 
-
-# ============================================================
-# IMÁGENES
-# ============================================================
-
-def count_message_images(
-    message,
-):
-    count = 0
-
-    for attachment in (
-        message.attachments
-    ):
-        if is_supported_image(
-            attachment
-        ):
-            count += 1
-
-    return count
-
-
-# ============================================================
-# VIDEOS
-# ============================================================
-
-VIDEO_EXTENSIONS = (
-    ".mp4",
-    ".mov",
-    ".webm",
-    ".mkv",
-    ".avi",
-    ".m4v",
-)
-
-
-def is_video_attachment(
-    attachment,
-):
-    filename = (
-        attachment.filename
-        or ""
-    ).lower()
-
-    content_type = (
-        attachment.content_type
-        or ""
-    ).lower()
-
-    if content_type.startswith(
-        "video/"
-    ):
-        return True
-
-    return filename.endswith(
-        VIDEO_EXTENSIONS
-    )
-
-
-def count_message_videos(
-    message,
-):
-    count = 0
-
-    for attachment in (
-        message.attachments
-    ):
-        if is_video_attachment(
-            attachment
-        ):
-            count += 1
-
-    return count
-
-
-# ============================================================
-# ARCHIVOS NORMALES
-# ============================================================
-
-def get_regular_attachment_text(
-    message,
-):
-    parts = []
-
-    for attachment in (
-        message.attachments
-    ):
-        filename = (
-            attachment.filename
-            or ""
-        ).lower()
-
-        content_type = (
-            attachment.content_type
-            or ""
-        ).lower()
-
-        # GIF ignorado.
-        if (
-            filename.endswith(
-                ".gif"
-            )
-            or content_type
-            == "image/gif"
-        ):
-            continue
-
-        # Imágenes procesadas aparte.
-        if is_supported_image(
-            attachment
-        ):
-            continue
-
-        # Videos procesados aparte.
-        if is_video_attachment(
-            attachment
-        ):
-            continue
-
-        parts.append(
-            "envió un archivo"
-        )
-
-    return parts
-
-
-# ============================================================
-# LIMPIEZA DE TEXTO
-# ============================================================
 
 def process_message_text(
     text,
     message,
     *,
     include_user_mentions=True,
+    include_role_mentions=True,
+    include_everyone_mentions=True,
 ):
-    if include_user_mentions:
-        text = replace_user_mentions(
-            text,
-            message,
-        )
-
-    else:
-        text = remove_user_mentions(
-            text,
-            message,
-        )
-
-    text = replace_channel_mentions(
-        text,
-        message,
+    text = (
+        replace_user_mentions(text, message)
+        if include_user_mentions else remove_user_mentions(text, message)
     )
-
-    text = replace_role_mentions(
-        text,
-        message,
+    text = replace_channel_mentions(text, message)
+    text = (
+        replace_role_mentions(text, message)
+        if include_role_mentions else remove_role_mentions(text, message)
     )
-
-    text = replace_custom_emojis(
-        text
-    )
-
-    text = replace_unicode_emojis(
-        text
-    )
-
-    return normalize_spaces(
-        text
-    )
+    if not include_everyone_mentions:
+        text = remove_everyone_mentions(text, message)
+    text = replace_custom_emojis(text)
+    text = replace_unicode_emojis(text)
+    return normalize_spaces(text)
 
 
 def clean_message_text(
     message,
+    *,
+    include_user_mentions=True,
+    include_role_mentions=True,
+    include_everyone_mentions=True,
 ):
-    text = (
-        message.content
-        or ""
-    )
-
     text = process_message_text(
-        text,
+        message.content or "",
         message,
+        include_user_mentions=include_user_mentions,
+        include_role_mentions=include_role_mentions,
+        include_everyone_mentions=include_everyone_mentions,
     )
-
-    # --------------------------------------------------------
-    # STICKERS
-    # --------------------------------------------------------
-
-    stickers = (
-        get_sticker_text(
-            message
-        )
-    )
-
-    if stickers:
-        sticker_text = ". ".join(
-            stickers
-        )
-
-        if text:
-            text = (
-                f"{text}. "
-                f"{sticker_text}"
-            )
-
-        else:
-            text = (
-                sticker_text
-            )
-
-    # --------------------------------------------------------
-    # OTROS ARCHIVOS
-    # --------------------------------------------------------
-
-    attachments = (
-        get_regular_attachment_text(
-            message
-        )
-    )
-
-    if attachments:
-        attachment_text = (
-            ". ".join(
-                attachments
-            )
-        )
-
-        if text:
-            text = (
-                f"{text}. "
-                f"{attachment_text}"
-            )
-
-        else:
-            text = (
-                attachment_text
-            )
-
-    return normalize_spaces(
-        text
-    )
+    extra = get_sticker_text(message) + get_regular_attachment_text(message)
+    if extra:
+        text = f"{text}. {'. '.join(extra)}" if text else ". ".join(extra)
+    return normalize_spaces(text)
 
 
-# ============================================================
-# TEXTO ACOMPAÑANDO MULTIMEDIA
-# ============================================================
-
-def get_media_caption(
-    message,
-):
-    """
-    Obtiene únicamente lo que escribió el usuario
-    junto a una imagen/video/enlace.
-
-    Las menciones de usuarios se eliminan porque,
-    para multimedia, se expresan como:
-
-    "etiquetó a X en una imagen"
-
-    en vez de repetir:
-
-    "mencionó a X".
-    """
-
-    text = (
-        message.content
-        or ""
-    )
-
-    text = remove_urls(
-        text
-    )
-
-    text = process_message_text(
-        text,
+def get_media_caption(message):
+    return process_message_text(
+        remove_urls(message.content or ""),
         message,
         include_user_mentions=False,
+        include_role_mentions=False,
+        include_everyone_mentions=False,
     )
 
-    return normalize_spaces(
-        text
-    )
 
-
-# ============================================================
-# REPLIES
-# ============================================================
-
-async def get_reply_target_name(
-    message,
-):
-    """
-    Obtiene el autor del mensaje respondido solo si
-    Discord ya nos entregó el mensaje original.
-
-    No usamos fetch_message() porque metería una
-    petición HTTP en el camino crítico del TTS.
-    """
-
+async def get_reply_target_name(message):
     if not message.reference:
         return None
-
-    resolved = (
-        message.reference.resolved
-    )
-
-    if isinstance(
-        resolved,
-        discord.Message,
-    ):
-        return get_spoken_name(
-            resolved.author
-        )
-
+    resolved = message.reference.resolved
+    if isinstance(resolved, discord.Message):
+        return get_spoken_name(resolved.author)
     return None
 
-# ============================================================
-# FRASES DE MULTIMEDIA
-# ============================================================
 
-def build_image_phrase(
-    author_name,
-    image_count,
-    mentioned_names,
-):
-    if mentioned_names:
-        targets = format_name_list(
-            mentioned_names
-        )
-
-        if image_count == 1:
-            return (
-                f"{author_name} "
-                f"etiquetó a {targets} "
-                "en una imagen"
-            )
-
-        return (
-            f"{author_name} "
-            f"etiquetó a {targets} "
-            f"en {image_count} imágenes"
-        )
-
-    if image_count == 1:
-        return (
-            f"{author_name} "
-            "envió una imagen"
-        )
-
-    return (
-        f"{author_name} "
-        f"envió {image_count} imágenes"
-    )
+def format_mention_targets(user_names, role_names, mention_everyone=False):
+    targets = [f"a {name}" for name in user_names]
+    targets.extend(f"al rol {name}" for name in role_names)
+    if mention_everyone:
+        targets.append("a todos")
+    return format_name_list(targets)
 
 
-def build_video_phrase(
-    author_name,
-    video_count,
-    mentioned_names,
-):
-    if mentioned_names:
-        targets = format_name_list(
-            mentioned_names
-        )
-
-        if video_count == 1:
-            return (
-                f"{author_name} "
-                f"etiquetó a {targets} "
-                "en un video"
-            )
-
-        return (
-            f"{author_name} "
-            f"etiquetó a {targets} "
-            f"en {video_count} videos"
-        )
-
-    if video_count == 1:
-        return (
-            f"{author_name} "
-            "envió un video"
-        )
-
-    return (
-        f"{author_name} "
-        f"envió {video_count} videos"
-    )
+def format_mentioned_targets(names):
+    return format_name_list([f"a {name}" for name in names])
 
 
-# ============================================================
-# CONSTRUIR MENSAJE FINAL
-#
-# IMPORTANTE:
-#
-# ESTA FUNCIÓN NO HACE OCR.
-#
-# OCR solo se usa explícitamente mediante:
-#
-# /tts decir imagen:[archivo]
-# ============================================================
+def build_mention_phrase(author_name, user_names, role_names, mention_everyone=False):
+    targets = format_mention_targets(user_names, role_names, mention_everyone)
+    count = len(user_names) + len(role_names) + int(mention_everyone)
+    if not count:
+        return ""
+    return f"{author_name} {'mencionó' if count == 1 else 'etiquetó'} {targets}"
 
-async def build_spoken_message(
-    message,
-):
-    author_name = (
-        get_spoken_name(
-            message.author
-        )
-    )
 
-    mentioned_names = (
-        get_mentioned_names(
-            message
-        )
-    )
+def build_image_phrase(author_name, image_count, mentioned_names, mentioned_roles=None, mention_everyone=False):
+    mentioned_roles = mentioned_roles or []
+    phrase = build_mention_phrase(author_name, mentioned_names, mentioned_roles, mention_everyone)
+    image_text = "una imagen" if image_count == 1 else f"{image_count} imágenes"
+    return f"{phrase} en {image_text}" if phrase else f"{author_name} envió {image_text}"
 
-    image_count = (
-        count_message_images(
-            message
-        )
-    )
 
-    video_count = (
-        count_message_videos(
-            message
-        )
-    )
+def build_video_phrase(author_name, video_count, mentioned_names, mentioned_roles=None, mention_everyone=False):
+    mentioned_roles = mentioned_roles or []
+    phrase = build_mention_phrase(author_name, mentioned_names, mentioned_roles, mention_everyone)
+    video_text = "un video" if video_count == 1 else f"{video_count} videos"
+    return f"{phrase} en {video_text}" if phrase else f"{author_name} envió {video_text}"
 
-    has_link = (
-        message_contains_url(
-            message
-        )
-    )
 
-    caption = (
-        get_media_caption(
-            message
-        )
-    )
+def count_message_links(message):
+    return len(URL_PATTERN.findall(message.content or ""))
 
-    # ========================================================
-    # IMAGEN
-    # ========================================================
 
-    if image_count > 0:
-        phrase = build_image_phrase(
-            author_name,
-            image_count,
-            mentioned_names,
-        )
+def get_media_items(message):
+    items = []
+    images = count_message_images(message)
+    videos = count_message_videos(message)
+    links = count_message_links(message)
+    files = len(get_regular_attachment_text(message))
+    stickers = len(get_sticker_text(message))
+    if images:
+        items.append("una imagen" if images == 1 else f"{images} imágenes")
+    if videos:
+        items.append("un video" if videos == 1 else f"{videos} videos")
+    if links:
+        items.append("un enlace" if links == 1 else f"{links} enlaces")
+    if files:
+        items.append("un archivo" if files == 1 else f"{files} archivos")
+    if stickers:
+        items.append("un sticker" if stickers == 1 else f"{stickers} stickers")
+    return items
 
-        if caption:
-            return (
-                f"{phrase} "
-                f"y dice: {caption}"
-            )
 
-        return phrase
+def build_target_clause(targets):
+    return f"etiquetó {format_name_list(targets)}" if len(targets) > 1 else f"mencionó {targets[0]}"
 
-    # ========================================================
-    # VIDEO
-    # ========================================================
 
-    if video_count > 0:
-        phrase = build_video_phrase(
-            author_name,
-            video_count,
-            mentioned_names,
-        )
+async def build_spoken_message(message):
+    """Build natural TTS text; OCR remains exclusive to explicit image commands."""
+    author_name = get_spoken_name(message.author)
+    targets = get_mention_targets(message)
+    caption = get_media_caption(message)
+    reply_name = await get_reply_target_name(message)
+    media_items = get_media_items(message)
 
-        if caption:
-            return (
-                f"{phrase} "
-                f"y dice: {caption}"
-            )
-
-        return phrase
-
-    # ========================================================
-    # ENLACE
-    # ========================================================
-
-    if has_link:
-        phrase = f"{author_name} envió un enlace"
-
-        if mentioned_names:
-            targets = " y ".join(
-                f"a {name}" for name in mentioned_names
-            ) if len(mentioned_names) == 2 else (
-                ", ".join(f"a {name}" for name in mentioned_names[:-1])
-                + f" y a {mentioned_names[-1]}"
-                if len(mentioned_names) > 2
-                else f"a {mentioned_names[0]}"
-            )
-            phrase += f" y etiquetó {targets}"
-
-        if caption:
-            return f"{phrase}: {caption}"
-
-        return phrase
-
-    # ========================================================
-    # TEXTO NORMAL
-    # ========================================================
-
-    normal_text = (
-        clean_message_text(
-            message
-        )
-    )
-
-    if mentioned_names:
-        normal_text = process_message_text(
-            message.content or "",
+    # Preserve previous behavior for normal text and standalone stickers/files.
+    if not media_items:
+        normal_text = clean_message_text(
             message,
-            include_user_mentions=False,
+            include_user_mentions=not bool(targets),
+            include_role_mentions=not bool(targets),
+            include_everyone_mentions=not bool(targets),
         )
-        # Conservamos los textos de stickers y archivos adjuntos.
-        full_text = clean_message_text(message)
-        without_mentions = process_message_text(
-            message.content or "",
-            message,
-            include_user_mentions=False,
-        )
-        with_mentions = process_message_text(
-            message.content or "",
-            message,
-            include_user_mentions=True,
-        )
-        if full_text.startswith(with_mentions):
-            normal_text = without_mentions + full_text[len(with_mentions):]
-        normal_text = normalize_spaces(normal_text)
+        if targets:
+            phrase = f"{author_name} {build_target_clause(targets)}"
+            if reply_name:
+                phrase = f"{author_name} respondió a {reply_name} y {build_target_clause(targets)}"
+            return f"{phrase}: {normal_text}" if normal_text else phrase
+        if not normal_text:
+            return None
+        if reply_name:
+            return f"{author_name} responde a {reply_name}: {normal_text}"
+        if should_announce_name(message.guild.id, message.author.id):
+            return f"{author_name} dice: {normal_text}"
+        return normal_text
 
-    reply_name = (
-        await get_reply_target_name(
-            message
-        )
-    )
-
-    if not normal_text and not mentioned_names:
-        return None
-
-    if mentioned_names:
-        if len(mentioned_names) == 1:
-            phrase = f"{author_name} mencionó a {mentioned_names[0]}"
-        else:
-            targets = (
-                " y ".join(f"a {name}" for name in mentioned_names)
-                if len(mentioned_names) == 2
-                else ", ".join(f"a {name}" for name in mentioned_names[:-1])
-                + f" y a {mentioned_names[-1]}"
-            )
-            phrase = f"{author_name} etiquetó {targets}"
-        return f"{phrase}: {normal_text}" if normal_text else phrase
-
-    # --------------------------------------------------------
-    # REPLY
-    # --------------------------------------------------------
-
+    # A lone ordinary file/sticker previously went through normal text handling.
+    # For all media, create one announcement so no attachment type is dropped.
+    phrase = f"{author_name} envió {format_name_list(media_items)}"
     if reply_name:
-        return (
-            f"{author_name} "
-            f"responde a {reply_name}: "
-            f"{normal_text}"
-        )
-
-    # --------------------------------------------------------
-    # MENSAJE NORMAL
-    # --------------------------------------------------------
-
-    if should_announce_name(
-        message.guild.id,
-        message.author.id,
-    ):
-        return (
-            f"{author_name} dice: "
-            f"{normal_text}"
-        )
-
-    return normal_text
+        phrase = f"{author_name} respondió a {reply_name} y envió {format_name_list(media_items)}"
+    if targets:
+        # Preserve the established "etiquetó ... en una imagen/video" phrasing
+        # for a single image/video attachment with no other media.
+        if not reply_name and len(media_items) == 1 and count_message_images(message) and not count_message_videos(message) and not count_message_links(message) and not get_regular_attachment_text(message) and not get_sticker_text(message):
+            phrase = f"{author_name} {build_target_clause(targets)} en {media_items[0]}"
+        elif not reply_name and len(media_items) == 1 and count_message_videos(message) and not count_message_images(message) and not count_message_links(message) and not get_regular_attachment_text(message) and not get_sticker_text(message):
+            phrase = f"{author_name} {build_target_clause(targets)} en {media_items[0]}"
+        else:
+            phrase += f" y etiquetó {format_name_list(targets)}"
+    if caption:
+        return f"{phrase}: {caption}" if targets else f"{phrase} y dice: {caption}"
+    return phrase

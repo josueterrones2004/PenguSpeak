@@ -1,250 +1,94 @@
-VOICES = {
-    # ========================================================
-    # VOCES MASCULINAS
-    # ========================================================
+"""Catálogos independientes de Edge TTS y Azure Speech."""
 
-    "edge_jorge": {
-        "name": "Jorge",
-        "engine": "edge",
-        "gender": "male",
-        "country": "México",
-        "flag": "🇲🇽",
-        "voice": "es-MX-JorgeNeural",
-        "demo": "demos/male/edge_jorge.mp3",
-    },
+# Identificadores existentes: se conservan para no invalidar preferencias.
+_EDGE_ROWS = [
+    ('jorge','Jorge','male','México','🇲🇽','es-MX-JorgeNeural'),
+    ('alvaro','Álvaro','male','España','🇪🇸','es-ES-AlvaroNeural'),
+    ('tomas','Tomas','male','Argentina','🇦🇷','es-AR-TomasNeural'),
+    ('marcelo','Marcelo','male','Bolivia','🇧🇴','es-BO-MarceloNeural'),
+    ('lorenzo','Lorenzo','male','Chile','🇨🇱','es-CL-LorenzoNeural'),
+    ('juan','Juan','male','Costa Rica','🇨🇷','es-CR-JuanNeural'),
+    ('manuel','Manuel','male','Cuba','🇨🇺','es-CU-ManuelNeural'),
+    ('emilio','Emilio','male','República Dominicana','🇩🇴','es-DO-EmilioNeural'),
+    ('andres','Andres','male','Guatemala','🇬🇹','es-GT-AndresNeural'),
+    ('federico','Federico','male','Nicaragua','🇳🇮','es-NI-FedericoNeural'),
+    ('roberto','Roberto','male','Panamá','🇵🇦','es-PA-RobertoNeural'),
+    ('alex_peru','Alex','male','Perú','🇵🇪','es-PE-AlexNeural'),
+    ('victor','Victor','male','Puerto Rico','🇵🇷','es-PR-VictorNeural'),
+    ('dalia','Dalia','female','México','🇲🇽','es-MX-DaliaNeural'),
+    ('sofia','Sofia','female','Bolivia','🇧🇴','es-BO-SofiaNeural'),
+    ('catalina','Catalina','female','Chile','🇨🇱','es-CL-CatalinaNeural'),
+    ('ramona','Ramona','female','República Dominicana','🇩🇴','es-DO-RamonaNeural'),
+    ('marta','Marta','female','Guatemala','🇬🇹','es-GT-MartaNeural'),
+    ('karla','Karla','female','Honduras','🇭🇳','es-HN-KarlaNeural'),
+    ('yolanda','Yolanda','female','Nicaragua','🇳🇮','es-NI-YolandaNeural'),
+    ('margarita','Margarita','female','Panamá','🇵🇦','es-PA-MargaritaNeural'),
+    ('camila','Camila','female','Perú','🇵🇪','es-PE-CamilaNeural'),
+]
 
-    "edge_alvaro": {
-        "name": "Álvaro",
-        "engine": "edge",
-        "gender": "male",
-        "country": "España",
-        "flag": "🇪🇸",
-        "voice": "es-ES-AlvaroNeural",
-        "demo": "demos/male/edge_alvaro.mp3",
-    },
+EDGE_VOICES = {}
+AZURE_VOICES = {}
 
-    "edge_tomas": {
-        "name": "Tomas",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Argentina",
-        "flag": "🇦🇷",
-        "voice": "es-AR-TomasNeural",
-        "demo": "demos/male/edge_tomas.mp3",
-    },
+for slug, name, gender, country, flag, voice in _EDGE_ROWS:
+    edge_id = f'edge_{slug}'
+    azure_id = f'azure_{slug}'
+    folder = 'male' if gender == 'male' else 'female'
+    common = {
+        'name': name,
+        'gender': gender,
+        'country': country,
+        'flag': flag,
+        'voice': voice,
+    }
+    EDGE_VOICES[edge_id] = {
+        **common,
+        'engine': 'edge',
+        'demo': f'demos/{folder}/{edge_id}.mp3',
+    }
+    AZURE_VOICES[azure_id] = {
+        **common,
+        'engine': 'azure',
+        'demo': f'demos/{folder}/{azure_id}.mp3',
+    }
 
-    "edge_marcelo": {
-        "name": "Marcelo",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Bolivia",
-        "flag": "🇧🇴",
-        "voice": "es-BO-MarceloNeural",
-        "demo": "demos/male/edge_marcelo.mp3",
-    },
-
-    "edge_lorenzo": {
-        "name": "Lorenzo",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Chile",
-        "flag": "🇨🇱",
-        "voice": "es-CL-LorenzoNeural",
-        "demo": "demos/male/edge_lorenzo.mp3",
-    },
-
-    "edge_juan": {
-        "name": "Juan",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Costa Rica",
-        "flag": "🇨🇷",
-        "voice": "es-CR-JuanNeural",
-        "demo": "demos/male/edge_juan.mp3",
-    },
-
-    "edge_manuel": {
-        "name": "Manuel",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Cuba",
-        "flag": "🇨🇺",
-        "voice": "es-CU-ManuelNeural",
-        "demo": "demos/male/edge_manuel.mp3",
-    },
-
-    "edge_emilio": {
-        "name": "Emilio",
-        "engine": "edge",
-        "gender": "male",
-        "country": "República Dominicana",
-        "flag": "🇩🇴",
-        "voice": "es-DO-EmilioNeural",
-        "demo": "demos/male/edge_emilio.mp3",
-    },
-
-    "edge_andres": {
-        "name": "Andres",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Guatemala",
-        "flag": "🇬🇹",
-        "voice": "es-GT-AndresNeural",
-        "demo": "demos/male/edge_andres.mp3",
-    },
-
-    "edge_federico": {
-        "name": "Federico",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Nicaragua",
-        "flag": "🇳🇮",
-        "voice": "es-NI-FedericoNeural",
-        "demo": "demos/male/edge_federico.mp3",
-    },
-
-    "edge_roberto": {
-        "name": "Roberto",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Panamá",
-        "flag": "🇵🇦",
-        "voice": "es-PA-RobertoNeural",
-        "demo": "demos/male/edge_roberto.mp3",
-    },
-
-    "edge_alex_peru": {
-        "name": "Alex",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Perú",
-        "flag": "🇵🇪",
-        "voice": "es-PE-AlexNeural",
-        "demo": "demos/male/edge_alex_peru.mp3",
-    },
-
-    "edge_victor": {
-        "name": "Victor",
-        "engine": "edge",
-        "gender": "male",
-        "country": "Puerto Rico",
-        "flag": "🇵🇷",
-        "voice": "es-PR-VictorNeural",
-        "demo": "demos/male/edge_victor.mp3",
-    },
-
-    # ========================================================
-    # VOCES FEMENINAS
-    # ========================================================
-
-    "edge_dalia": {
-        "name": "Dalia",
-        "engine": "edge",
-        "gender": "female",
-        "country": "México",
-        "flag": "🇲🇽",
-        "voice": "es-MX-DaliaNeural",
-        "demo": "demos/female/edge_dalia.mp3",
-    },
-
-    "edge_sofia": {
-        "name": "Sofia",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Bolivia",
-        "flag": "🇧🇴",
-        "voice": "es-BO-SofiaNeural",
-        "demo": "demos/female/edge_sofia.mp3",
-    },
-
-    "edge_catalina": {
-        "name": "Catalina",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Chile",
-        "flag": "🇨🇱",
-        "voice": "es-CL-CatalinaNeural",
-        "demo": "demos/female/edge_catalina.mp3",
-    },
-
-    "edge_ramona": {
-        "name": "Ramona",
-        "engine": "edge",
-        "gender": "female",
-        "country": "República Dominicana",
-        "flag": "🇩🇴",
-        "voice": "es-DO-RamonaNeural",
-        "demo": "demos/female/edge_ramona.mp3",
-    },
-
-    "edge_marta": {
-        "name": "Marta",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Guatemala",
-        "flag": "🇬🇹",
-        "voice": "es-GT-MartaNeural",
-        "demo": "demos/female/edge_marta.mp3",
-    },
-
-    "edge_karla": {
-        "name": "Karla",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Honduras",
-        "flag": "🇭🇳",
-        "voice": "es-HN-KarlaNeural",
-        "demo": "demos/female/edge_karla.mp3",
-    },
-
-    "edge_yolanda": {
-        "name": "Yolanda",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Nicaragua",
-        "flag": "🇳🇮",
-        "voice": "es-NI-YolandaNeural",
-        "demo": "demos/female/edge_yolanda.mp3",
-    },
-
-    "edge_margarita": {
-        "name": "Margarita",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Panamá",
-        "flag": "🇵🇦",
-        "voice": "es-PA-MargaritaNeural",
-        "demo": "demos/female/edge_margarita.mp3",
-    },
-
-    "edge_camila": {
-        "name": "Camila",
-        "engine": "edge",
-        "gender": "female",
-        "country": "Perú",
-        "flag": "🇵🇪",
-        "voice": "es-PE-CamilaNeural",
-        "demo": "demos/female/edge_camila.mp3",
-    },
-}
+# El catálogo de Azure es candidato hasta verificarlo contra el recurso
+# Azure Speech y generar los MP3 de demostración correspondientes.
+VOICES = {**EDGE_VOICES, **AZURE_VOICES}
+DEFAULT_EDGE_VOICE = 'edge_jorge'
+DEFAULT_AZURE_VOICE = 'azure_jorge'
+DEFAULT_VOICE = DEFAULT_EDGE_VOICE
 
 
-DEFAULT_VOICE = "edge_jorge"
+def get_default_voice(engine='edge'):
+    if engine == 'edge':
+        return DEFAULT_EDGE_VOICE
+    if engine == 'azure':
+        return DEFAULT_AZURE_VOICE
+    raise ValueError(f'Motor TTS desconocido: {engine}')
+
+
+def get_engine_voices(engine='edge'):
+    if engine == 'edge':
+        return EDGE_VOICES
+    if engine == 'azure':
+        return AZURE_VOICES
+    raise ValueError(f'Motor TTS desconocido: {engine}')
 
 
 def get_voice_label(voice_id):
     data = VOICES[voice_id]
-
-    return (
-        f'{data["flag"]} '
-        f'{data["name"]} · '
-        f'{data["country"]}'
-    )
+    return f'{data["flag"]} {data["name"]} · {data["country"]}'
 
 
-def get_gender_voices(gender):
+def get_gender_voices(gender, engine='edge'):
     return [
         (voice_id, data)
-        for voice_id, data in VOICES.items()
-        if data["gender"] == gender
+        for voice_id, data in get_engine_voices(engine).items()
+        if data['gender'] == gender
     ]
+
+
+def get_equivalent_voice(voice_id, engine):
+    """Busca la misma voz en otro motor, sin cambiar preferencias."""
+    target = f'{engine}_{voice_id.split("_", 1)[-1]}'
+    return target if target in get_engine_voices(engine) else get_default_voice(engine)

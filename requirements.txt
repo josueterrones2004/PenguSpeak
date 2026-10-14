@@ -1,6 +1,7 @@
 discord.py[voice]==2.7.1
 davey==0.1.6
-edge-tts==7.2.8
+edge-tts @ git+https://github.com/jonata/edge-tts.git@8a5844c3a1d33e4e8f2f3e14535542c0d75d4248
+aiohttp>=3.9,<4
 python-dotenv==1.2.3
 Pillow==12.3.0
 pytesseract==0.3.13
