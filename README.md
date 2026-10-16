@@ -2,76 +2,90 @@
 
 # 🐧 PenguSpeak
 
-**Convierte conversaciones de Discord en voz, con baja latencia, 22 voces en español y configuración por usuario.**
+**A Spanish-first Discord TTS bot focused on low latency, natural voice playback and reliable real-time sessions.**
 
 [![Version](https://img.shields.io/badge/version-1.3.0-5865F2?style=flat-square)](https://github.com/josueterrones2004/PenguSpeak/releases/tag/v1.3.0)
 [![Python](https://img.shields.io/badge/Python-3.x-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![discord.py](https://img.shields.io/badge/discord.py-2.7.1-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discordpy.readthedocs.io/)
-[![Edge TTS](https://img.shields.io/badge/Edge_TTS-principal-0078D7?style=flat-square)](https://github.com/rany2/edge-tts)
-[![Azure Speech](https://img.shields.io/badge/Azure_Speech-respaldo-0089D6?style=flat-square&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/products/ai-services/ai-speech)
-[![License](https://img.shields.io/badge/licencia-MIT-22c55e?style=flat-square)](LICENSE)
+[![Edge TTS](https://img.shields.io/badge/Edge_TTS-primary-0078D7?style=flat-square)](https://github.com/rany2/edge-tts)
+[![Azure Speech](https://img.shields.io/badge/Azure_Speech-fallback-0089D6?style=flat-square&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/products/ai-services/ai-speech)
+[![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)](LICENSE)
 
-**[🌐 Web oficial](https://josueterrones2004.github.io/PenguSpeak-Web/)** · **[📦 Releases](https://github.com/josueterrones2004/PenguSpeak/releases)** · **[📝 Changelog](CHANGELOG.md)**
+**[🌐 Official website](https://josueterrones2004.github.io/PenguSpeak-Web/)** · **[📦 Releases](https://github.com/josueterrones2004/PenguSpeak/releases)** · **[📝 Changelog](CHANGELOG.md)**
 
 </div>
 
 ---
 
-PenguSpeak es un bot de **Text-to-Speech para Discord** escrito en Python. Está pensado para poder escuchar el chat mientras juegas, hablas con otras personas o simplemente no quieres estar mirando constantemente el canal de texto.
+PenguSpeak is a **Text-to-Speech bot for Discord** written in Python. It is built for people who want to hear chat messages while playing, talking with friends or simply without constantly looking at a text channel.
 
-Cada usuario puede elegir su propia voz y apodo. PenguSpeak mantiene colas independientes por servidor, procesa mensajes de forma contextual y reproduce el audio de forma progresiva para reducir las esperas entre mensajes.
+Each user can choose their own voice and spoken nickname. PenguSpeak keeps independent queues per server, processes messages contextually and streams audio progressively to reduce the delay between a message being sent and speech beginning.
 
-> **Versión estable actual:** `1.3.0`
+> **Current stable version:** `1.3.0`
+>
+> **Language:** PenguSpeak is intentionally built for **Spanish**. Its voice catalog, spoken output and user-facing TTS experience are centered around Spanish, and there are currently **no plans to add English voices**.
 
-## ✨ Qué incluye
+## ✨ What it includes
 
-- 🔊 TTS continuo con `/tts iniciar` y `/tts detener`.
-- 💬 Reproducción manual con `/tts decir`.
-- 🎙️ **22 voces en español** de distintos países y regiones.
-- 👤 Voz configurable individualmente para cada usuario.
-- 🏷️ Apodos personalizados para el TTS.
-- ⚙️ Panel interactivo de configuración con `/tts configurar`.
-- 💾 Preferencias persistentes mediante SQLite.
-- 🧠 Lectura contextual de mensajes, respuestas, menciones y contenido multimedia.
-- 😄 Soporte para emojis Unicode y emojis personalizados de Discord.
-- 🎟️ Lectura de stickers por nombre.
-- 🖼️ Detección de imágenes.
-- 🎥 Detección de videos.
-- 🔗 Detección de enlaces.
-- 📎 Detección de archivos adjuntos.
-- 📚 Cola independiente por servidor.
-- ⚡ Reproducción progresiva y preparación anticipada del siguiente audio.
-- ⏭️ Cada usuario puede saltar únicamente sus propios mensajes.
-- 🔄 Reconexión automática de voz cuando una sesión válida continúa activa.
-- 🔒 Protección para evitar que una sesión activa sea movida a otro canal de voz.
-- 🔇 Conexión con `self_deaf=True`: PenguSpeak no necesita escuchar el audio del canal.
-- 💤 Gestión automática de sesiones e inactividad.
-- 🛟 Cambio automático entre Edge TTS y Azure Speech cuando es necesario.
-- 📱 Compatible con Linux y también ejecutable en Android mediante Termux con un entorno compatible.
+- 🔊 Continuous TTS with `/tts iniciar` and `/tts detener`.
+- 💬 Manual playback with `/tts decir`.
+- 🎙️ **22 Spanish voices** from different countries and regions.
+- 👤 Per-user voice preferences.
+- 🏷️ Custom spoken nicknames.
+- ⚙️ Interactive configuration panel with `/tts configurar`.
+- 💾 Persistent preferences stored with SQLite.
+- 🧠 Context-aware handling of messages, replies, mentions and media.
+- 😄 Unicode and custom Discord emoji support.
+- 🎟️ Sticker name reading.
+- 🖼️ Image detection.
+- 🎥 Video detection.
+- 🔗 Link detection.
+- 📎 Attachment detection.
+- 📚 Independent queue per Discord server.
+- ⚡ Progressive audio playback and next-message prefetching.
+- ⏭️ Users can skip only their own queued messages.
+- 🔄 Automatic voice reconnection when a valid session is still active.
+- 🔒 Session protection to avoid silently moving an active session to another voice channel.
+- 🔇 Voice connections use `self_deaf=True`; PenguSpeak does not need to listen to channel audio.
+- 💤 Automatic session and inactivity management.
+- 🛟 Automatic failover between Edge TTS and Azure Speech when needed.
+- 📱 Runs on Linux and can also be used on Android through Termux with a compatible environment.
 
 ---
 
-## 🔊 Dos formas de usar el TTS
+## 🇪🇸 Spanish by design
 
-### TTS continuo
+PenguSpeak is not intended to be a general-purpose multilingual TTS bot.
 
-Con `/tts iniciar`, PenguSpeak comienza a leer los mensajes que escriba ese usuario mientras permanezca en el canal de voz de la sesión.
+The project is specifically focused on Spanish-speaking Discord communities. Its available voices, default behavior, spoken phrases and commands are designed around Spanish usage.
+
+The current voice catalog contains **22 Spanish voices**, and English voices are not part of the project roadmap at this time.
+
+The README and project documentation are written in English so the codebase is easier to understand and evaluate internationally, but the bot itself remains Spanish-focused.
+
+---
+
+## 🔊 Two ways to use TTS
+
+### Continuous TTS
+
+With `/tts iniciar`, PenguSpeak starts reading the messages written by that user while they remain in the voice channel associated with the current session.
 
 ```text
 /tts iniciar
 ```
 
-Cuando ya no quieras que lea tus mensajes:
+To stop automatic reading:
 
 ```text
 /tts detener
 ```
 
-El TTS continuo es individual: activar PenguSpeak para una persona no activa automáticamente la lectura para los demás usuarios del canal.
+Continuous TTS is per-user. Enabling PenguSpeak for one person does not automatically enable it for everyone else in the channel.
 
-### TTS manual
+### Manual TTS
 
-`/tts decir` permite reproducir un texto puntual sin activar el modo continuo.
+`/tts decir` plays a one-time message without enabling continuous mode.
 
 ```text
 /tts decir texto: Hola a todos
@@ -79,43 +93,43 @@ El TTS continuo es individual: activar PenguSpeak para una persona no activa aut
 
 ---
 
-## 🧠 Lectura contextual de mensajes
+## 🧠 Context-aware message processing
 
-PenguSpeak no se limita a enviar el texto tal cual al sintetizador. Antes construye una frase hablada que intenta conservar el contexto del mensaje.
+PenguSpeak does more than pass raw text directly to a speech provider. Before synthesis, it builds a spoken sentence that tries to preserve the context of the Discord message.
 
-| Contenido | Comportamiento |
+| Content | Behavior |
 | --- | --- |
-| 💬 Texto normal | Lee el contenido del mensaje. |
-| ↩️ Respuesta | Puede indicar a quién está respondiendo el usuario. |
-| 👤 Mención de usuario | Pronuncia el nombre o apodo correspondiente. |
-| 🏷️ Mención de rol | Identifica el rol mencionado. |
-| 📣 `@everyone` / `@here` | Reconoce la mención cuando Discord la marca como real. |
-| 🖼️ Imagen | Anuncia que el usuario envió una imagen. |
-| 🎥 Video | Anuncia que el usuario envió un video. |
-| 🔗 Enlace | Anuncia la presencia de un enlace sin leer la URL completa. |
-| 📎 Archivo | Anuncia que se envió un archivo. |
-| 🎟️ Sticker | Utiliza el nombre del sticker cuando está disponible. |
-| 😄 Emoji Unicode | Convierte el emoji a una forma hablable. |
-| 🎨 Emoji personalizado | Humaniza el nombre del emoji de Discord. |
+| 💬 Plain text | Reads the message content. |
+| ↩️ Reply | Can mention who the user is replying to. |
+| 👤 User mention | Speaks the matching username or configured nickname. |
+| 🏷️ Role mention | Identifies the mentioned role. |
+| 📣 `@everyone` / `@here` | Recognizes the mention when Discord marks it as a real mention. |
+| 🖼️ Image | Announces that the user sent an image. |
+| 🎥 Video | Announces that the user sent a video. |
+| 🔗 Link | Announces that a link was sent without reading the full URL. |
+| 📎 File | Announces that a file was sent. |
+| 🎟️ Sticker | Uses the sticker name when available. |
+| 😄 Unicode emoji | Converts the emoji into a speakable name. |
+| 🎨 Custom emoji | Humanizes the custom Discord emoji name. |
 
-Por ejemplo, un mensaje con texto e imagen puede terminar reproduciéndose de forma similar a:
+For example, a message containing both text and an image can become something similar to:
 
 ```text
 Yarin envió una imagen y dice: mira esto
 ```
 
-Si el mensaje responde a otra persona o contiene menciones, PenguSpeak incorpora ese contexto a la frase cuando corresponde.
+If the message is a reply or contains mentions, PenguSpeak adds that context when appropriate.
 
 ### 😄 Emojis
 
-Los emojis Unicode se transforman a nombres que puedan ser pronunciados por el TTS. Los emojis personalizados de Discord utilizan su nombre como base.
+Unicode emojis are converted into names that can be pronounced naturally by the TTS system. Custom Discord emojis use their emoji name as a base.
 
 ```text
 <:penguDance:123456789>
 → pengu Dance
 ```
 
-También se conserva un pequeño easter egg del proyecto:
+The project also keeps a small easter egg:
 
 ```text
 👀 → ojitos void
@@ -123,17 +137,17 @@ También se conserva un pequeño easter egg del proyecto:
 
 ### 🎟️ Stickers
 
-Cuando un mensaje contiene un sticker con nombre disponible, PenguSpeak puede anunciarlo en voz.
+When a Discord message contains a sticker with an available name, PenguSpeak can announce it in speech.
 
 ```text
 sticker Gato feliz
 ```
 
-### 🖼️ Imágenes, videos, enlaces y archivos
+### 🖼️ Images, videos, links and files
 
-PenguSpeak reconoce el tipo de contenido adjunto y lo integra en la frase hablada. No necesita leer una URL completa ni reproducir nombres de archivo complicados para indicar qué ocurrió en el chat.
+PenguSpeak detects common attachment types and includes that information in the spoken sentence instead of reading long URLs or awkward file names.
 
-Ejemplos:
+Examples:
 
 ```text
 Yarin envió una imagen
@@ -144,167 +158,179 @@ Yarin envió un archivo
 
 ---
 
-## 🎙️ Voces
+## 🎙️ Spanish voices
 
-PenguSpeak incluye **22 voces en español** y permite seleccionar una preferencia personal desde Discord. La misma elección se conserva al cambiar entre Edge TTS y Azure Speech cuando existe una voz equivalente.
+PenguSpeak includes **22 Spanish voices** and lets each user select a personal preference directly from Discord. When an equivalent voice exists in both providers, the preference is preserved when switching between Edge TTS and Azure Speech.
 
-La voz predeterminada es **🇲🇽 Jorge · México**.
+The default voice is **🇲🇽 Jorge · Mexico**.
 
-### 👨 Voces masculinas
+### 👨 Male voices
 
-| Voz | Región |
+| Voice | Region |
 | --- | --- |
-| 🇲🇽 Jorge | México |
-| 🇪🇸 Álvaro | España |
+| 🇲🇽 Jorge | Mexico |
+| 🇪🇸 Álvaro | Spain |
 | 🇦🇷 Tomas | Argentina |
 | 🇧🇴 Marcelo | Bolivia |
 | 🇨🇱 Lorenzo | Chile |
 | 🇨🇷 Juan | Costa Rica |
 | 🇨🇺 Manuel | Cuba |
-| 🇩🇴 Emilio | República Dominicana |
+| 🇩🇴 Emilio | Dominican Republic |
 | 🇬🇹 Andres | Guatemala |
 | 🇳🇮 Federico | Nicaragua |
-| 🇵🇦 Roberto | Panamá |
-| 🇵🇪 Alex | Perú |
+| 🇵🇦 Roberto | Panama |
+| 🇵🇪 Alex | Peru |
 | 🇵🇷 Victor | Puerto Rico |
 
-### 👩 Voces femeninas
+### 👩 Female voices
 
-| Voz | Región |
+| Voice | Region |
 | --- | --- |
-| 🇲🇽 Dalia | México |
+| 🇲🇽 Dalia | Mexico |
 | 🇧🇴 Sofia | Bolivia |
 | 🇨🇱 Catalina | Chile |
-| 🇩🇴 Ramona | República Dominicana |
+| 🇩🇴 Ramona | Dominican Republic |
 | 🇬🇹 Marta | Guatemala |
 | 🇭🇳 Karla | Honduras |
 | 🇳🇮 Yolanda | Nicaragua |
-| 🇵🇦 Margarita | Panamá |
-| 🇵🇪 Camila | Perú |
+| 🇵🇦 Margarita | Panama |
+| 🇵🇪 Camila | Peru |
 
-Las voces pueden explorarse desde `/voces hombres`, `/voces mujeres` o directamente desde `/tts configurar`. Cuando existen archivos de demostración, el navegador de voces los adjunta para poder escucharlos antes de elegir.
-
----
-
-## ⚙️ Panel de configuración
-
-`/tts configurar` abre un panel privado para personalizar PenguSpeak sin tener que recordar todos los comandos.
-
-Desde ahí puedes:
-
-- 🎙️ Abrir las voces masculinas.
-- 🎙️ Abrir las voces femeninas.
-- ✏️ Editar tu apodo.
-- 🗑️ Quitar tu apodo.
-- 🔄 Restablecer la voz o todas tus preferencias.
-- 🔃 Actualizar el estado mostrado por el panel.
-
-Los selectores y botones del panel solamente pueden ser utilizados por el usuario que lo abrió.
+Voices can be explored through `/voces hombres`, `/voces mujeres` or directly from `/tts configurar`. When demo files are available, the voice browser can attach them so users can listen before choosing.
 
 ---
 
-## 🏷️ Apodos
+## ⚙️ Configuration panel
 
-PenguSpeak permite configurar un nombre alternativo para que el TTS lo utilice al hablar de ti.
+`/tts configurar` opens a private interactive panel so users can customize PenguSpeak without remembering every command.
+
+From there, users can:
+
+- 🎙️ Browse male voices.
+- 🎙️ Browse female voices.
+- ✏️ Edit their spoken nickname.
+- 🗑️ Remove their nickname.
+- 🔄 Reset their voice or all stored preferences.
+- 🔃 Refresh the state shown by the panel.
+
+The panel controls can only be used by the user who opened it.
+
+---
+
+## 🏷️ Spoken nicknames
+
+PenguSpeak lets users configure an alternate name for TTS output.
 
 ```text
 /apodo poner apodo: Yarin
 ```
 
-También puedes consultar o quitar el apodo:
+The nickname can also be checked or removed:
 
 ```text
 /apodo actual
 /apodo quitar
 ```
 
-Los apodos aceptan letras, números y espacios. Los símbolos especiales se rechazan para mantener una pronunciación predecible.
+Nicknames accept letters, numbers and spaces. Special symbols are rejected to keep pronunciation predictable.
 
 ---
 
-## ⚡ Cola, streaming y baja latencia
+## ⚡ Queues, streaming and low latency
 
-Cada servidor tiene su propia cola. Esto evita que la actividad de un servidor interfiera con la reproducción de otro.
+Each Discord server gets its own queue, preventing activity in one server from interfering with playback in another.
 
-PenguSpeak prepara el audio mientras administra la cola y puede comenzar a preparar el siguiente mensaje antes de que llegue su turno. El objetivo es reducir las pausas perceptibles entre mensajes consecutivos.
+PenguSpeak prepares audio while managing the queue and can begin preparing the next message before its turn arrives. The goal is to reduce noticeable pauses between consecutive messages.
 
-El sistema también mantiene información sobre el mensaje actual, elementos cancelados y streams pendientes para poder reaccionar a saltos, desconexiones y cambios de estado sin vaciar innecesariamente toda la sesión.
+The system also tracks the current item, cancelled items and pending streams so it can react to skips, disconnects and state changes without unnecessarily clearing the entire session.
 
-### ⏭️ Saltar mensajes
+### Progressive playback
 
-`/tts saltar` está limitado a los mensajes del propio usuario.
+Audio is streamed progressively instead of waiting for the complete TTS result before playback begins.
 
-Si el mensaje que se está reproduciendo pertenece a quien ejecuta el comando, PenguSpeak puede detenerlo. Si pertenece a otra persona, busca el siguiente mensaje pendiente del usuario que pidió el salto.
+A thread-safe buffer sits between asynchronous TTS generation and FFmpeg playback, allowing Discord audio to begin while more compressed audio is still arriving from the active speech provider.
 
-Los mensajes de otros usuarios no se eliminan.
+### Prefetching
+
+The queue worker can prepare upcoming TTS streams ahead of playback. This reduces the delay between consecutive messages when a session is active and several messages are waiting.
+
+### ⏭️ Skipping messages
+
+`/tts saltar` is limited to the requesting user's own messages.
+
+If the currently playing message belongs to that user, PenguSpeak can stop it. Otherwise, it looks for that user's next pending item in the queue.
+
+Messages belonging to other users are not removed.
 
 ---
 
-## 🛟 Edge TTS + Azure Speech
+## 🛟 Edge TTS + Azure Speech failover
 
-**Edge TTS** es el motor principal de PenguSpeak.
+**Edge TTS** is PenguSpeak's primary speech engine.
 
-Si Edge deja de estar disponible y las credenciales de Azure están configuradas, **Azure Speech** entra automáticamente como respaldo. Mientras Azure está activo, PenguSpeak comprueba periódicamente si Edge vuelve a funcionar y regresa al motor principal cuando se recupera.
+If Edge becomes unavailable and Azure credentials are configured, **Azure Speech** automatically takes over as a fallback provider. While Azure is active, PenguSpeak periodically checks whether Edge has recovered and switches back when the primary engine becomes available again.
 
-Cuando una sesión TTS está activa, PenguSpeak puede avisar en Discord del cambio de motor y de la recuperación para que los usuarios sepan por qué el comportamiento o la latencia pudieron variar.
+When a TTS session is active, PenguSpeak can notify Discord users about provider changes and recovery so unexpected latency or voice differences have some context.
 
 ```text
 Edge TTS
    │
-   ├── disponible ───────────────→ TTS normal
+   ├── available ───────────────→ normal TTS
    │
    └── error
         ↓
     Azure Speech
         │
-        └── comprobaciones periódicas → regreso a Edge
+        └── periodic recovery checks → back to Edge
 ```
 
-Azure Speech es opcional y requiere tus propias credenciales.
+Azure Speech is optional and requires your own credentials.
 
 ---
 
-## 🔒 Sesiones de voz
+## 🔒 Voice sessions
 
-PenguSpeak mantiene una sesión asociada al canal de voz donde comenzó la actividad TTS.
+PenguSpeak keeps each active TTS session associated with the voice channel where it started.
 
-- Si existe una sesión activa, no permite moverla silenciosamente a otro canal.
-- Los mensajes solo se leen cuando el usuario continúa en el canal de voz de la sesión.
-- Si un usuario activo abandona ese canal, su TTS se desactiva y se eliminan sus mensajes pendientes.
-- Cuando sale el último usuario TTS de la sesión, PenguSpeak limpia la cola y se desconecta.
-- El bot se conecta ensordecido con `self_deaf=True` porque solo necesita reproducir audio, no escuchar a los usuarios.
-- Si Discord interrumpe la conexión pero la sesión sigue siendo válida, PenguSpeak puede intentar reconectarse al canal original.
+- An active session cannot be silently moved to another voice channel.
+- Messages are only read while the user remains in the session's voice channel.
+- If an active user leaves that channel, their TTS is disabled and their pending items are removed.
+- When the last active TTS user leaves, PenguSpeak clears the queue and disconnects.
+- The bot connects with `self_deaf=True` because it only needs to play audio, not listen to users.
+- If Discord interrupts the connection while the session is still valid, PenguSpeak can attempt to reconnect to the original channel.
 
 ---
 
-## 🎙️ Comandos
+## 🎙️ Commands
 
-| Comando | Función |
+The bot's command names remain in Spanish because PenguSpeak itself is designed for Spanish-speaking users.
+
+| Command | Purpose |
 | --- | --- |
-| `/tts iniciar` | Activa la lectura automática para el usuario. |
-| `/tts detener` | Desactiva la lectura automática y limpia sus mensajes pendientes. |
-| `/tts decir` | Reproduce un texto manualmente. |
-| `/tts saltar` | Salta el mensaje actual o el siguiente mensaje propio de la cola. |
-| `/tts configurar` | Abre el panel interactivo de voz y apodo. |
-| `/voz actual` | Muestra la voz actualmente seleccionada. |
-| `/voces hombres` | Abre el navegador de voces masculinas. |
-| `/voces mujeres` | Abre el navegador de voces femeninas. |
-| `/apodo poner` | Crea o cambia el apodo hablado. |
-| `/apodo quitar` | Elimina el apodo personalizado. |
-| `/apodo actual` | Muestra el apodo actual. |
+| `/tts iniciar` | Enables automatic reading for the user. |
+| `/tts detener` | Disables automatic reading and clears the user's pending messages. |
+| `/tts decir` | Plays a one-time TTS message. |
+| `/tts saltar` | Skips the current or next queued message belonging to the user. |
+| `/tts configurar` | Opens the interactive voice and nickname configuration panel. |
+| `/voz actual` | Shows the currently selected voice. |
+| `/voces hombres` | Opens the male voice browser. |
+| `/voces mujeres` | Opens the female voice browser. |
+| `/apodo poner` | Creates or changes the spoken nickname. |
+| `/apodo quitar` | Removes the custom nickname. |
+| `/apodo actual` | Shows the current nickname. |
 
-Los slash commands se sincronizan automáticamente al iniciar el bot.
+Slash commands are synchronized automatically when the bot starts.
 
 ---
 
-## 📋 Requisitos
+## 📋 Requirements
 
-PenguSpeak necesita:
+PenguSpeak requires:
 
 - Python.
 - FFmpeg.
-- Una aplicación de Discord con **Message Content Intent** habilitado.
-- Permisos para ver y enviar mensajes, utilizar comandos de aplicación, conectarse a canales de voz y hablar.
+- A Discord application with **Message Content Intent** enabled.
+- Permissions to view and send messages, use application commands, connect to voice channels and speak.
 
 ### Arch Linux / CachyOS
 
@@ -321,59 +347,59 @@ sudo apt install ffmpeg
 
 ---
 
-## 🚀 Instalación
+## 🚀 Installation
 
-Clona el repositorio:
+Clone the repository:
 
 ```bash
 git clone https://github.com/josueterrones2004/PenguSpeak.git
 cd PenguSpeak
 ```
 
-Crea un entorno virtual:
+Create a virtual environment:
 
 ```bash
 python -m venv .venv
 ```
 
-Actívalo:
+Activate it:
 
 ```bash
 source .venv/bin/activate
 ```
 
-Instala las dependencias:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Crea tu archivo `.env` a partir del ejemplo:
+Create your `.env` file from the example:
 
 ```bash
 cp .env.example .env
 ```
 
-Configura el token de Discord:
+Configure your Discord token:
 
 ```dotenv
-DISCORD_TOKEN=tu_token_de_discord
+DISCORD_TOKEN=your_discord_token
 ```
 
-Para habilitar Azure Speech como respaldo, añade también:
+To enable Azure Speech as a fallback, also add:
 
 ```dotenv
-AZURE_SPEECH_KEY=tu_clave
-AZURE_SPEECH_REGION=tu_region
+AZURE_SPEECH_KEY=your_key
+AZURE_SPEECH_REGION=your_region
 ```
 
-Inicia PenguSpeak:
+Start PenguSpeak:
 
 ```bash
 python bot.py
 ```
 
-O directamente con el intérprete del entorno virtual:
+Or run it directly through the virtual environment interpreter:
 
 ```bash
 .venv/bin/python bot.py
@@ -381,40 +407,40 @@ O directamente con el intérprete del entorno virtual:
 
 ---
 
-## 🤖 Configuración en Discord
+## 🤖 Discord setup
 
-En el **Discord Developer Portal** habilita:
+In the **Discord Developer Portal**, enable:
 
 - **Message Content Intent**.
 
-Y asegúrate de que el bot pueda:
+Make sure the bot can also:
 
-- Ver los canales necesarios.
-- Enviar mensajes.
-- Usar comandos de aplicación.
-- Conectarse a canales de voz.
-- Hablar en canales de voz.
+- View the required channels.
+- Send messages.
+- Use application commands.
+- Connect to voice channels.
+- Speak in voice channels.
 
-PenguSpeak utiliza los estados de voz para saber si el usuario continúa dentro de la sesión TTS correspondiente.
+PenguSpeak uses Discord voice state information to determine whether a user is still part of the active TTS session.
 
 ---
 
 ## 📱 Android / Termux
 
-PenguSpeak también puede ejecutarse en Android utilizando Termux y un entorno Linux compatible.
+PenguSpeak can also run on Android through Termux and a compatible Linux environment.
 
-Una instalación existente puede mantenerse actualizada con:
+An existing installation can be kept up to date with:
 
 ```bash
 git pull
 pip install -r requirements.txt
 ```
 
-Para mantener el proceso activo puedes utilizar herramientas como `tmux` dentro del entorno donde ejecutes el bot.
+Tools such as `tmux` can be used inside the environment to keep the process running.
 
 ---
 
-## 📁 Estructura del proyecto
+## 📁 Project structure
 
 ```text
 PenguSpeak/
@@ -440,71 +466,71 @@ PenguSpeak/
     └── voices.py
 ```
 
-### Componentes principales
+### Main components
 
-- `bot.py` — eventos de Discord, slash commands y sesiones de voz.
-- `audio.py` — motores TTS, streaming, FFmpeg y fallback Edge/Azure.
-- `database.py` — preferencias persistentes de voz y apodos mediante SQLite.
-- `queue.py` — colas por servidor, prefetch, reproducción y cancelación.
-- `state.py` — estado de sesiones, usuarios activos e inactividad.
-- `text.py` — procesamiento contextual de mensajes, emojis, menciones y adjuntos.
-- `views.py` — panel de configuración, selectores y navegador de voces.
-- `voices.py` — catálogo de voces Edge/Azure y equivalencias entre motores.
+- `bot.py` — Discord events, slash commands and voice session coordination.
+- `audio.py` — TTS providers, progressive streaming, FFmpeg and Edge/Azure failover.
+- `database.py` — persistent voice and nickname preferences using SQLite.
+- `queue.py` — per-server queues, prefetching, playback and cancellation.
+- `state.py` — session state, active users and inactivity management.
+- `text.py` — context-aware processing for messages, emojis, mentions and attachments.
+- `views.py` — configuration panel, selectors and voice browser.
+- `voices.py` — Edge/Azure voice catalog and cross-provider mappings.
 
 ---
 
-## 🔐 Seguridad
+## 🔐 Security
 
-El token del bot y las credenciales de Azure deben mantenerse fuera del repositorio.
+The Discord bot token and Azure credentials must stay outside the repository.
 
-No publiques:
+Do not publish:
 
 - `.env`
-- tokens de Discord
-- claves de Azure
-- bases de datos SQLite con preferencias de usuarios
-- archivos de log privados
+- Discord tokens
+- Azure keys
+- SQLite databases containing user preferences
+- private log files
 
-El `.gitignore` del proyecto ya excluye archivos `.env`, bases de datos locales y logs habituales.
+The project's `.gitignore` already excludes `.env` files, local databases and common log files.
 
 ---
 
-## 🔄 Actualizar PenguSpeak
+## 🔄 Updating PenguSpeak
 
-En una instalación existente:
+For an existing installation:
 
 ```bash
 git pull
 pip install -r requirements.txt
 ```
 
-Después reinicia el bot normalmente.
+Then restart the bot normally.
 
 ---
 
-## 🌐 Web oficial
+## 🌐 Official website
 
-PenguSpeak también tiene una página web propia con información del proyecto:
+PenguSpeak has its own website with project information:
 
 **https://josueterrones2004.github.io/PenguSpeak-Web/**
 
-El sitio web se mantiene en un repositorio separado: [PenguSpeak-Web](https://github.com/josueterrones2004/PenguSpeak-Web).
+The website lives in a separate repository: [PenguSpeak-Web](https://github.com/josueterrones2004/PenguSpeak-Web).
 
 ---
 
-## 📦 Versión
+## 📦 Version
 
-Versión estable actual:
+Current stable version:
 
 **PenguSpeak v1.3.0**
 
-Consulta [CHANGELOG.md](CHANGELOG.md) para ver los cambios de la versión actual y la sección de [Releases](https://github.com/josueterrones2004/PenguSpeak/releases) para versiones publicadas.
+See [CHANGELOG.md](CHANGELOG.md) for version history and [Releases](https://github.com/josueterrones2004/PenguSpeak/releases) for published versions.
 
 ---
 
-## 📜 Licencia
+## 📜 License
 
-PenguSpeak está disponible bajo la licencia **MIT**. Consulta [LICENSE](LICENSE) para más información.
+PenguSpeak is available under the **MIT License**. See [LICENSE](LICENSE) for details.
 
 ---
 
@@ -512,6 +538,6 @@ PenguSpeak está disponible bajo la licencia **MIT**. Consulta [LICENSE](LICENSE
 
 🐧 **PenguSpeak**
 
-Hecho con Python, discord.py, Edge TTS y Azure Speech.
+Built with Python, discord.py, Edge TTS, Azure Speech and FFmpeg.
 
 </div>
